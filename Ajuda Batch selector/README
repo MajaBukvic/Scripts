@@ -1,0 +1,14 @@
+# UserScripts Collection
+
+A collection of useful userscripts for Ajuda.
+
+## Available Scripts
+
+### [Ajuda Cart Batch Selector](/scripts/ajuda-batch-selector)
+Helps batch select Ajuda cart items based on layer and locale rules.
+
+## General Installation Instructions
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/) browser extension
+2. Click on the script link above
+3. Follow the script-specific installation instructions
