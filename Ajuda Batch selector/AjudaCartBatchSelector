@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Ajuda Cart Batch Selector
 // @namespace    http://tampermonkey.net/
-// @version      0.4
-// @description  Select cart items based on layer and locale rules with vertical and function selection and memory
-// @author       MajaBukvic
+// @version      0.5
+// @description  Select cart items based on layer rules with vertical and function selection and memory
+// @author       **********
 // @match        https://ajuda.a2z.com/cms.html*
 // @grant        none
 // ==/UserScript==
@@ -16,44 +16,40 @@
             name: "Trust and Store Integrity (TSI)",
             functions: {
                 SIV: {
-                    name: "Seller Identity Verification",
-                    layers: {
-                        US: ['en-US', 'es-ES', 'zh-CN'],
-                        AE: ['ar-AE'],
-                        JP: ['ja-JP'],
-                        IN: ['ta-IN', 'hi-IN'],
-                        TR: ['tr-TR'],
-                        AU: ['zh-TW'],
-                        SE: ['sv-SE'],
-                        SG: ['zh-TW']
-                    },
-                    primaryLocales: ['US'],
+                    name: "SIV",
+                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SA', 'SE', 'SG'],
+                    primaryLayers: ['US'],
                     fallbackOrder: ['AE', 'EG', 'SA', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
                 },
-                KYC: {
-                    name: "Know Your Customer",
-                    layers: {
-                        US: ['en-US', 'es-ES'],
-                        AE: ['ar-AE'],
-                    },
-                    primaryLocales: ['US', 'AE'],
-                    fallbackOrder: ['US', 'AE', 'SA']
+                'EU KYC': {
+                    name: "EU KYC",
+                    layers: ['US', 'AE'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['AE', 'SA']
+                },
+                'ROW KYC': {
+                    name: "ROW KYC",
+                    layers: ['US', 'JP'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['JP']
                 },
                 SAM: {
-                    name: "Seller Account Management",
-                    layers: {
-                        US: ['en-US', 'es-ES', 'zh-CN'],
-                        AE: ['ar-AE'],
-                        JP: ['ja-JP'],
-                        IN: ['ta-IN', 'hi-IN'],
-                        TR: ['tr-TR'],
-                        AU: ['zh-TW'],
-                        SE: ['sv-SE'],
-                        SG: ['zh-TW'],
-                        DE: ['de-DE']
-                    },
-                    primaryLocales: ['US', 'UK', 'DE'],
-                    fallbackOrder: ['US', 'UK', 'DE']
+                    name: "SAM",
+                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['UK', 'DE']
+                },
+DAC7: {
+                    name: "DAC7",
+                    layers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US', 'UK'],
+                    primaryLayers: ['UK'],
+                    fallbackOrder: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US']
+                },
+                VAT: {
+                    name: "VAT",
+                    layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR'],
+                    primaryLayers: ['UK'],
+                    fallbackOrder: ['US', 'JP']
                 }
             }
         },
@@ -62,35 +58,15 @@
             functions: {
                 ProductQuality: {
                     name: "Product Quality",
-                    layers: {
-                        US: ['en-US', 'es-ES', 'zh-CN'],
-                        AE: ['ar-AE'],
-                        JP: ['ja-JP'],
-                        IN: ['ta-IN', 'hi-IN'],
-                        TR: ['tr-TR'],
-                        AU: ['zh-TW'],
-                        SE: ['sv-SE'],
-                        SG: ['zh-TW'],
-                        DE: ['de-DE']
-                    },
-                    primaryLocales: ['US', 'UK'],
-                    fallbackOrder: ['US', 'UK', 'DE', 'FR']
+                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['UK', 'DE', 'FR']
                 },
                 FraudPrevention: {
                     name: "Fraud Prevention",
-                    layers: {
-                        US: ['en-US', 'es-ES', 'zh-CN'],
-                        AE: ['ar-AE'],
-                        JP: ['ja-JP'],
-                        IN: ['ta-IN', 'hi-IN'],
-                        TR: ['tr-TR'],
-                        AU: ['zh-TW'],
-                        SE: ['sv-SE'],
-                        SG: ['zh-TW'],
-                        DE: ['de-DE']
-                    },
-                    primaryLocales: ['US', 'UK'],
-                    fallbackOrder: ['US', 'UK', 'DE', 'FR']
+                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['UK', 'DE', 'FR']
                 }
             }
         },
@@ -99,34 +75,14 @@
             functions: {
                 CatalogRisk: {
                     name: "Catalog Risk",
-                    layers: {
-                        US: ['en-US', 'es-ES', 'zh-CN'],
-                        AE: ['ar-AE'],
-                        JP: ['ja-JP'],
-                        IN: ['ta-IN', 'hi-IN'],
-                        TR: ['tr-TR'],
-                        AU: ['zh-TW'],
-                        SE: ['sv-SE'],
-                        SG: ['zh-TW'],
-                        DE: ['de-DE']
-                    },
-                    primaryLocales: ['US', 'UK'],
+                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
+                    primaryLayers: ['US', 'UK'],
                     fallbackOrder: ['US', 'UK', 'DE', 'FR']
                 },
                 BuyerRiskInvestigations: {
                     name: "Buyer Risk Investigations",
-                    layers: {
-                        US: ['en-US', 'es-ES', 'zh-CN'],
-                        AE: ['ar-AE'],
-                        JP: ['ja-JP'],
-                        IN: ['ta-IN', 'hi-IN'],
-                        TR: ['tr-TR'],
-                        AU: ['zh-TW'],
-                        SE: ['sv-SE'],
-                        SG: ['zh-TW'],
-                        DE: ['de-DE']
-                    },
-                    primaryLocales: ['US', 'CA'],
+                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
+                    primaryLayers: ['US', 'CA'],
                     fallbackOrder: ['US', 'CA', 'MX']
                 }
             }
@@ -182,18 +138,6 @@
         element.dispatchEvent(event);
     }
 
-    function getBestLocaleForLayer(availableLocales, layer) {
-        const layerConfig = selectedFunction.layers[layer];
-        if (!layerConfig) return availableLocales[0];
-
-        for (const locale of selectedFunction.fallbackOrder) {
-            if (availableLocales.includes(locale) && layerConfig.includes(locale)) {
-                return locale;
-            }
-        }
-        return availableLocales[0];
-    }
-
     function groupBlurbs() {
         const rows = document.querySelectorAll('#version-list tbody tr');
         const groups = {};
@@ -202,7 +146,7 @@
             const blurbName = element.querySelector('td:nth-child(2) div:first-child').textContent;
             const objInfo = parseObjectId(element.querySelector('.sub-text').textContent);
 
-            if (objInfo && selectedFunction.layers[objInfo.layer]) {
+            if (objInfo && selectedFunction.layers.includes(objInfo.layer)) {
                 if (!groups[blurbName]) {
                     groups[blurbName] = {
                         versions: []
@@ -226,18 +170,15 @@
         const toDeselect = new Set();
 
         Object.entries(groups).forEach(([blurbName, group]) => {
-            const primaryLayers = selectedFunction.primaryLocales;
+            const primaryLayers = selectedFunction.primaryLayers;
 
             if (isPrimary) {
                 primaryLayers.forEach(layer => {
                     const layerVersions = group.versions.filter(v => v.layer === layer);
                     if (layerVersions.length > 0) {
-                        const bestLocale = getBestLocaleForLayer(layerVersions.map(v => v.locale), layer);
-                        const bestVersion = layerVersions.find(v => v.locale === bestLocale);
-                        if (bestVersion) {
-                            toSelect.add(bestVersion.element);
-                            layerVersions.filter(v => v !== bestVersion).forEach(v => toDeselect.add(v.element));
-                        }
+                        const bestVersion = layerVersions[0]; // Just take the first version for the layer
+                        toSelect.add(bestVersion.element);
+                        layerVersions.slice(1).forEach(v => toDeselect.add(v.element));
                     }
                 });
             } else {
