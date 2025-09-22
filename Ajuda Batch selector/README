@@ -1,14 +1,16 @@
-# UserScripts Collection
+# Ajuda Cart Batch Selector
 
-A collection of useful userscripts for Ajuda.
+## Installation
 
-## Available Scripts
+1. Make sure you have [Tampermonkey](https://www.tampermonkey.net/) installed
+2. [Click here to install the script](https://raw.githubusercontent.com/[your-username]/[repository-name]/main/scripts/ajuda-batch-selector/AjudaCartBatchSelector.user.js)
+3. Click "Install" when Tampermonkey opens
+4. Refresh your Ajuda page
 
-### [Ajuda Cart Batch Selector](/scripts/ajuda-batch-selector)
-Helps batch select Ajuda cart items based on layer and locale rules.
+## Features
+- Remembers your last vertical and function selections
+- Supports primary and secondary batch selection
+- Works with all major verticals and functions
 
-## General Installation Instructions
-
-1. Install [Tampermonkey](https://www.tampermonkey.net/) browser extension
-2. Click on the script link above
-3. Follow the script-specific installation instructions
+## Usage
+[Add usage instructions here]
