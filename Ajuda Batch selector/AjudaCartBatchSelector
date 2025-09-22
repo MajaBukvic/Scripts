@@ -39,7 +39,7 @@
                     primaryLayers: ['US'],
                     fallbackOrder: ['UK', 'DE']
                 },
-DAC7: {
+                DAC7: {
                     name: "DAC7",
                     layers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US', 'UK'],
                     primaryLayers: ['UK'],
@@ -48,7 +48,7 @@ DAC7: {
                 VAT: {
                     name: "VAT",
                     layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR'],
-                    primaryLayers: ['UK'],
+                    primaryLayers: ['US', 'JP'],
                     fallbackOrder: ['US', 'JP']
                 }
             }
