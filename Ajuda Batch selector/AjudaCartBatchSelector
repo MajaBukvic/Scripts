@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ajuda Cart Batch Selector
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  Select cart items based on layer rules with vertical and function selection and memory
 // @author       **********
 // @match        https://ajuda.a2z.com/cms.html*
@@ -37,7 +37,7 @@
                     name: "SAM",
                     layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
                     primaryLayers: ['US'],
-                    fallbackOrder: ['UK', 'DE']
+                    fallbackOrder: ['UK', 'DE', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
                 },
                 DAC7: {
                     name: "DAC7",
@@ -47,9 +47,9 @@
                 },
                 VAT: {
                     name: "VAT",
-                    layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR'],
+                    layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR', 'US', 'JP'],
                     primaryLayers: ['US', 'JP'],
-                    fallbackOrder: ['US', 'JP']
+                    fallbackOrder: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR']
                 }
             }
         },
