@@ -3,7 +3,7 @@
 ## Installation
 
 1. Make sure you have [Tampermonkey](https://www.tampermonkey.net/) installed
-2. [Click here to install the script](https://raw.githubusercontent.com/MajaBukvic/Scripts/refs/heads/main/Ajuda%20Batch%20selector/AjudaCartBatchSelector)
+2. [Click here to install the script](https://raw.githubusercontent.com/MajaBukvic/Scripts/refs/heads/main/Ajuda%20Batch%20selector/AjudaCartBatchSelector.user.js)
 3. Click "Install" when Tampermonkey opens
 4. Refresh your Ajuda page
 
@@ -13,4 +13,9 @@
 - Works with all major verticals and functions
 
 ## Usage
-[Click to install script](https://raw.githubusercontent.com/MajaBukvic/Scripts/refs/heads/main/AjudaCartBatchSelector)
+1. Navigate to the Ajuda cart page
+2. Look for the new "Batch Selector" button
+3. Click the button to open the selection dialog
+4. Choose your vertical and function
+5. Select either "Primary Batch" or "Secondary Batch"
+6. The script will automatically select the appropriate items in your cart
