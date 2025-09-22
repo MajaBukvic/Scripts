@@ -1,0 +1,397 @@
+// ==UserScript==
+// @name         Ajuda Cart Batch Selector
+// @namespace    http://tampermonkey.net/
+// @version      0.4
+// @description  Select cart items based on layer and locale rules with vertical and function selection and memory
+// @author       MajaBukvic
+// @match        https://ajuda.a2z.com/cms.html*
+// @grant        none
+// ==/UserScript==
+
+
+(function() {
+    'use strict';
+
+    const VERTICAL_CONFIGS = {
+        Compliance: {
+            name: "Trust and Store Integrity (TSI)",
+            functions: {
+                SIV: {
+                    name: "Seller Identity Verification",
+                    layers: {
+                        US: ['en-US', 'es-ES', 'zh-CN'],
+                        AE: ['ar-AE'],
+                        JP: ['ja-JP'],
+                        IN: ['ta-IN', 'hi-IN'],
+                        TR: ['tr-TR'],
+                        AU: ['zh-TW'],
+                        SE: ['sv-SE'],
+                        SG: ['zh-TW']
+                    },
+                    primaryLocales: ['US'],
+                    fallbackOrder: ['AE', 'EG', 'SA', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
+                },
+                KYC: {
+                    name: "Know Your Customer",
+                    layers: {
+                        US: ['en-US', 'es-ES'],
+                        AE: ['ar-AE'],
+                    },
+                    primaryLocales: ['US', 'AE'],
+                    fallbackOrder: ['US', 'AE', 'SA']
+                },
+                SAM: {
+                    name: "Seller Account Management",
+                    layers: {
+                        US: ['en-US', 'es-ES', 'zh-CN'],
+                        AE: ['ar-AE'],
+                        JP: ['ja-JP'],
+                        IN: ['ta-IN', 'hi-IN'],
+                        TR: ['tr-TR'],
+                        AU: ['zh-TW'],
+                        SE: ['sv-SE'],
+                        SG: ['zh-TW'],
+                        DE: ['de-DE']
+                    },
+                    primaryLocales: ['US', 'UK', 'DE'],
+                    fallbackOrder: ['US', 'UK', 'DE']
+                }
+            }
+        },
+        Seller: {
+            name: "Seller",
+            functions: {
+                ProductQuality: {
+                    name: "Product Quality",
+                    layers: {
+                        US: ['en-US', 'es-ES', 'zh-CN'],
+                        AE: ['ar-AE'],
+                        JP: ['ja-JP'],
+                        IN: ['ta-IN', 'hi-IN'],
+                        TR: ['tr-TR'],
+                        AU: ['zh-TW'],
+                        SE: ['sv-SE'],
+                        SG: ['zh-TW'],
+                        DE: ['de-DE']
+                    },
+                    primaryLocales: ['US', 'UK'],
+                    fallbackOrder: ['US', 'UK', 'DE', 'FR']
+                },
+                FraudPrevention: {
+                    name: "Fraud Prevention",
+                    layers: {
+                        US: ['en-US', 'es-ES', 'zh-CN'],
+                        AE: ['ar-AE'],
+                        JP: ['ja-JP'],
+                        IN: ['ta-IN', 'hi-IN'],
+                        TR: ['tr-TR'],
+                        AU: ['zh-TW'],
+                        SE: ['sv-SE'],
+                        SG: ['zh-TW'],
+                        DE: ['de-DE']
+                    },
+                    primaryLocales: ['US', 'UK'],
+                    fallbackOrder: ['US', 'UK', 'DE', 'FR']
+                }
+            }
+        },
+        Buyer: {
+            name: "Buyer",
+            functions: {
+                CatalogRisk: {
+                    name: "Catalog Risk",
+                    layers: {
+                        US: ['en-US', 'es-ES', 'zh-CN'],
+                        AE: ['ar-AE'],
+                        JP: ['ja-JP'],
+                        IN: ['ta-IN', 'hi-IN'],
+                        TR: ['tr-TR'],
+                        AU: ['zh-TW'],
+                        SE: ['sv-SE'],
+                        SG: ['zh-TW'],
+                        DE: ['de-DE']
+                    },
+                    primaryLocales: ['US', 'UK'],
+                    fallbackOrder: ['US', 'UK', 'DE', 'FR']
+                },
+                BuyerRiskInvestigations: {
+                    name: "Buyer Risk Investigations",
+                    layers: {
+                        US: ['en-US', 'es-ES', 'zh-CN'],
+                        AE: ['ar-AE'],
+                        JP: ['ja-JP'],
+                        IN: ['ta-IN', 'hi-IN'],
+                        TR: ['tr-TR'],
+                        AU: ['zh-TW'],
+                        SE: ['sv-SE'],
+                        SG: ['zh-TW'],
+                        DE: ['de-DE']
+                    },
+                    primaryLocales: ['US', 'CA'],
+                    fallbackOrder: ['US', 'CA', 'MX']
+                }
+            }
+        }
+    };
+
+    let selectedVertical = null;
+    let selectedFunction = null;
+
+    function saveSelections(vertical, func) {
+        localStorage.setItem('selectedVertical', vertical);
+        localStorage.setItem('selectedFunction', func);
+    }
+
+    function loadSelections() {
+        return {
+            vertical: localStorage.getItem('selectedVertical'),
+            function: localStorage.getItem('selectedFunction')
+        };
+    }
+
+    function createBatchButton() {
+        const button = document.createElement('button');
+        button.textContent = 'Batch Selector';
+        button.className = 'btn btn-info';
+        button.style.marginLeft = '5px';
+
+        const bulkOperations = document.querySelector('.bulk-operations');
+        if (bulkOperations) {
+            const deleteButton = bulkOperations.querySelector('.btn-warning');
+            if (deleteButton) {
+                deleteButton.parentNode.insertAdjacentElement('afterend', button);
+            } else {
+                bulkOperations.appendChild(button);
+            }
+        }
+
+        button.addEventListener('click', handleBatchSelection);
+    }
+
+    function parseObjectId(text) {
+        const match = text.match(/([^\/]+)\/Published\/([^\/]+)\/([^\/]+)/);
+        return match ? { id: match[1], layer: match[2], locale: match[3] } : null;
+    }
+
+    function simulateClick(element) {
+        if (!element) return;
+        const event = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true
+        });
+        element.dispatchEvent(event);
+    }
+
+    function getBestLocaleForLayer(availableLocales, layer) {
+        const layerConfig = selectedFunction.layers[layer];
+        if (!layerConfig) return availableLocales[0];
+
+        for (const locale of selectedFunction.fallbackOrder) {
+            if (availableLocales.includes(locale) && layerConfig.includes(locale)) {
+                return locale;
+            }
+        }
+        return availableLocales[0];
+    }
+
+    function groupBlurbs() {
+        const rows = document.querySelectorAll('#version-list tbody tr');
+        const groups = {};
+
+        Array.from(rows).forEach(element => {
+            const blurbName = element.querySelector('td:nth-child(2) div:first-child').textContent;
+            const objInfo = parseObjectId(element.querySelector('.sub-text').textContent);
+
+            if (objInfo && selectedFunction.layers[objInfo.layer]) {
+                if (!groups[blurbName]) {
+                    groups[blurbName] = {
+                        versions: []
+                    };
+                }
+                groups[blurbName].versions.push({
+                    element: element,
+                    layer: objInfo.layer,
+                    locale: objInfo.locale,
+                    id: objInfo.id
+                });
+            }
+        });
+
+        return groups;
+    }
+
+    function selectBatch(isPrimary) {
+        const groups = groupBlurbs();
+        const toSelect = new Set();
+        const toDeselect = new Set();
+
+        Object.entries(groups).forEach(([blurbName, group]) => {
+            const primaryLayers = selectedFunction.primaryLocales;
+
+            if (isPrimary) {
+                primaryLayers.forEach(layer => {
+                    const layerVersions = group.versions.filter(v => v.layer === layer);
+                    if (layerVersions.length > 0) {
+                        const bestLocale = getBestLocaleForLayer(layerVersions.map(v => v.locale), layer);
+                        const bestVersion = layerVersions.find(v => v.locale === bestLocale);
+                        if (bestVersion) {
+                            toSelect.add(bestVersion.element);
+                            layerVersions.filter(v => v !== bestVersion).forEach(v => toDeselect.add(v.element));
+                        }
+                    }
+                });
+            } else {
+                group.versions.forEach(version => {
+                    if (!primaryLayers.includes(version.layer)) {
+                        toSelect.add(version.element);
+                    } else {
+                        toDeselect.add(version.element);
+                    }
+                });
+            }
+        });
+
+        // First uncheck all checkboxes
+        document.querySelectorAll('#version-list tbody tr input[type="checkbox"]').forEach(checkbox => {
+            if (checkbox.checked) simulateClick(checkbox);
+        });
+
+        // Then select the ones we want
+        toSelect.forEach(element => {
+            let checkbox = element.querySelector('input[type="checkbox"]');
+            if (!checkbox.checked) simulateClick(checkbox);
+        });
+    }
+
+    function updateFunctionSelect(verticalKey) {
+        const functionSelect = document.getElementById('functionSelect');
+        functionSelect.innerHTML = '';
+        const savedSelections = loadSelections();
+
+        if (verticalKey && VERTICAL_CONFIGS[verticalKey]) {
+            const functions = VERTICAL_CONFIGS[verticalKey].functions;
+            Object.entries(functions).forEach(([key, config]) => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = config.name;
+                if (savedSelections.function === key) {
+                    option.selected = true;
+                }
+                functionSelect.appendChild(option);
+            });
+            functionSelect.disabled = false;
+            selectedFunction = functions[savedSelections.function] || functions[Object.keys(functions)[0]];
+        } else {
+            functionSelect.disabled = true;
+            selectedFunction = null;
+        }
+    }
+
+    function handleBatchSelection() {
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            z-index: 1001;
+            border-radius: 4px;
+            min-width: 300px;
+        `;
+
+        const savedSelections = loadSelections();
+
+        let html = `
+            <div style="margin-bottom: 15px;">
+                <label for="verticalSelect">Select Vertical:</label>
+                <select id="verticalSelect" class="form-control" style="margin-bottom: 10px;">
+                    ${Object.entries(VERTICAL_CONFIGS).map(([key, config]) =>
+                        `<option value="${key}" ${savedSelections.vertical === key ? 'selected' : ''}>${config.name}</option>`
+                    ).join('')}
+                </select>
+
+                <label for="functionSelect">Select Function:</label>
+                <select id="functionSelect" class="form-control">
+                    <!-- Will be populated based on vertical selection -->
+                </select>
+            </div>
+            <div style="text-align: center;">
+                <button id="selectPrimary" class="btn btn-primary" style="margin: 5px;">Select Primary Batch</button><br>
+                <button id="selectSecondary" class="btn btn-info" style="margin: 5px;">Select Secondary Batch</button><br>
+                <button id="closeDialog" class="btn" style="margin: 5px;">Close</button>
+            </div>
+        `;
+
+        dialog.innerHTML = html;
+        document.body.appendChild(dialog);
+
+        const verticalSelect = document.getElementById('verticalSelect');
+
+        // Initialize function select based on saved or default vertical
+        updateFunctionSelect(savedSelections.vertical || verticalSelect.value);
+
+        verticalSelect.onchange = (e) => {
+            selectedVertical = VERTICAL_CONFIGS[e.target.value];
+            updateFunctionSelect(e.target.value);
+            saveSelections(e.target.value, document.getElementById('functionSelect').value);
+        };
+
+        document.getElementById('functionSelect').onchange = (e) => {
+            const verticalKey = verticalSelect.value;
+            selectedFunction = VERTICAL_CONFIGS[verticalKey].functions[e.target.value];
+            saveSelections(verticalKey, e.target.value);
+        };
+
+        document.getElementById('selectPrimary').onclick = () => {
+            if (selectedFunction) {
+                selectBatch(true);
+                dialog.remove();
+            } else {
+                alert("Please select a vertical and function first.");
+            }
+        };
+
+        document.getElementById('selectSecondary').onclick = () => {
+            if (selectedFunction) {
+                selectBatch(false);
+                dialog.remove();
+            } else {
+                alert("Please select a vertical and function first.");
+            }
+        };
+
+        document.getElementById('closeDialog').onclick = () => {
+            dialog.remove();
+        };
+
+        // Set initial selections
+        if (savedSelections.vertical) {
+            selectedVertical = VERTICAL_CONFIGS[savedSelections.vertical];
+            selectedFunction = VERTICAL_CONFIGS[savedSelections.vertical].functions[savedSelections.function];
+        } else {
+            selectedVertical = VERTICAL_CONFIGS[verticalSelect.value];
+            selectedFunction = VERTICAL_CONFIGS[verticalSelect.value].functions[document.getElementById('functionSelect').value];
+        }
+    }
+
+    // Initialize
+    if (window.location.href.includes('ajuda.a2z.com/cms.html')) {
+        const observer = new MutationObserver((mutations, obs) => {
+            const bulkOperations = document.querySelector('.bulk-operations');
+            if (bulkOperations) {
+                createBatchButton();
+                obs.disconnect();
+            }
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+})();
