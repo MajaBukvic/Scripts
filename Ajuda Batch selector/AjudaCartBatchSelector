@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ajuda Cart Batch Selector
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.8
 // @description  Select cart items based on layer rules with vertical and function selection and memory
 // @author       **********
 // @match        https://ajuda.a2z.com/cms.html*
@@ -21,13 +21,13 @@
                     primaryLayers: ['US'],
                     fallbackOrder: ['AE', 'EG', 'SA', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
                 },
-IPV: {
+                IPV: {
                     name: "In-person Verification (IPV)",
                     layers: ['US', 'AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW'],
                     primaryLayers: ['US'],
                     fallbackOrder: ['AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW']
                 },
-TT: {
+                TT: {
                     name: "Transaction Trust (TT)",
                     layers: ['US', 'ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR'],
                     primaryLayers: ['US'],
@@ -110,7 +110,7 @@ TT: {
                     primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
                     fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
                 },
-APAY Seller: {
+                APAY Seller: {
                     name: "APAY Seller",
                     layers: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP', 'UK'],
                     primaryLayers: ['UK', 'US'],
