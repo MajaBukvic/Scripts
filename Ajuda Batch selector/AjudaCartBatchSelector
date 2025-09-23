@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Ajuda Cart Batch Selector
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.8
 // @description  Select cart items based on layer rules with vertical and function selection and memory
-// @author       MajaBukvic
+// @author       **********
 // @match        https://ajuda.a2z.com/cms.html*
 // @grant        none
 // ==/UserScript==
@@ -21,7 +21,7 @@
             US_UK: ['US', 'UK'],
             TSE_Common: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR']
         },
-        fallbackOrder: {
+        secondaryLayers: {
             TSE_Common: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
         }
     };
@@ -34,49 +34,49 @@
                     name: "Seller Identity Verification (SIV)",
                     layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SA', 'SE', 'SG'],
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['AE', 'EG', 'SA', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
+                    secondaryLayers: ['AE', 'EG', 'SA', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
                 },
                 IPV: {
                     name: "In-person Verification (IPV)",
                     layers: ['US', 'AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW'],
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW']
+                    secondaryLayers: ['AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW']
                 },
                 TT: {
                     name: "Transaction Trust (TT)",
                     layers: ['US', 'ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR'],
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR']
+                    secondaryLayers: ['ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR']
                 },
                 'EU KYC': {
                     name: "EU Know Your Customer (KYC)",
                     layers: ['US', 'AE'],
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['AE', 'SA']
+                    secondaryLayers: ['AE', 'SA']
                 },
                 'ROW KYC': {
                     name: "ROW Know Your Customer (KYC)",
                     layers: ['US', 'JP'],
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['JP']
+                    secondaryLayers: ['JP']
                 },
                 SAM: {
                     name: "Suspicious Activity Monitoring (SAM)",
                     layers: COMMON_CONFIGS.layers.US_AE_JP_IN_TR_AU_SE_SG_DE,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['UK', 'DE', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
+                    secondaryLayers: ['UK', 'DE', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
                 },
                 DAC7: {
                     name: "DAC7",
                     layers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US', 'UK'],
                     primaryLayers: ['UK'],
-                    fallbackOrder: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US']
+                    secondaryLayers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US']
                 },
                 VAT: {
                     name: "Value Added Tax (VAT)",
                     layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR', 'US', 'JP'],
                     primaryLayers: ['US', 'JP'],
-                    fallbackOrder: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR']
+                    secondaryLayers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR']
                 }
             }
         },
@@ -87,55 +87,55 @@
                     name: "Product Quality (PQ)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 RA: {
                     name: "Reported Abuse (RA)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 AtoZ: {
                     name: "A-to-z Guarantee Claims seller-facing (Claims-seller)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 SAP: {
                     name: "Sales Abuse Prevention (SAP)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 RPSA: {
                     name: "Restricted Product Seller Appeals (RPSA)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 PAT: {
                     name: "Product Authentication Team (PAT)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 CERT: {
                     name: "Certification Team (CERT)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    fallbackOrder: COMMON_CONFIGS.fallbackOrder.TSE_Common
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 APAY_Seller: {
                     name: "APAY Seller",
                     layers: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP', 'UK'],
                     primaryLayers: ['UK', 'US'],
-                    fallbackOrder: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP']
+                    secondaryLayers: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP']
                 },
                 FP: {
                     name: "Fraud Prevention (FP)",
                     layers: COMMON_CONFIGS.layers.US_AE_JP_IN_TR_AU_SE_SG_DE,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    fallbackOrder: ['UK', 'DE', 'FR']
+                    secondaryLayers: ['UK', 'DE', 'FR']
                 }
             }
         },
@@ -146,13 +146,13 @@
                     name: "Catalog Risk",
                     layers: COMMON_CONFIGS.layers.US_AE_JP_IN_TR_AU_SE_SG_DE,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_UK,
-                    fallbackOrder: ['US', 'UK', 'DE', 'FR']
+                    secondaryLayers: ['US', 'UK', 'DE', 'FR']
                 },
                 BuyerRiskInvestigations: {
                     name: "Buyer Risk Investigations",
                     layers: COMMON_CONFIGS.layers.US_AE_JP_IN_TR_AU_SE_SG_DE,
                     primaryLayers: ['US', 'CA'],
-                    fallbackOrder: ['US', 'CA', 'MX']
+                    secondaryLayers: ['US', 'CA', 'MX']
                 }
             }
         }
@@ -247,8 +247,8 @@
                     }
                 });
             } else {
-                // Secondary selection: select ALL layers in fallbackOrder, including primary layers if they're listed
-                selectedFunction.fallbackOrder.forEach(layer => {
+                // Secondary selection: select ALL layers in secondaryLayers, including primary layers if they're listed
+                selectedFunction.secondaryLayers.forEach(layer => {
                     const layerVersions = group.versions.filter(v => v.layer === layer);
                     if (layerVersions.length > 0) {
                         toSelect.add(layerVersions[0].element);
