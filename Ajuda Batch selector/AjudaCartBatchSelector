@@ -12,29 +12,41 @@
     'use strict';
 
     const VERTICAL_CONFIGS = {
-        Compliance: {
+        TSI: {
             name: "Trust and Store Integrity (TSI)",
             functions: {
                 SIV: {
-                    name: "SIV",
+                    name: "Seller Identity Verification (SIV)",
                     layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SA', 'SE', 'SG'],
                     primaryLayers: ['US'],
                     fallbackOrder: ['AE', 'EG', 'SA', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
                 },
+IPV: {
+                    name: "In-person Verification (IPV)",
+                    layers: ['US', 'AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW']
+                },
+TT: {
+                    name: "Transaction Trust (TT)",
+                    layers: ['US', 'ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR'],
+                    primaryLayers: ['US'],
+                    fallbackOrder: ['ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR']
+                },
                 'EU KYC': {
-                    name: "EU KYC",
+                    name: "EU Know Your Customer (KYC)",
                     layers: ['US', 'AE'],
                     primaryLayers: ['US'],
                     fallbackOrder: ['AE', 'SA']
                 },
                 'ROW KYC': {
-                    name: "ROW KYC",
+                    name: "ROW Know Your Customer (KYC)",
                     layers: ['US', 'JP'],
                     primaryLayers: ['US'],
                     fallbackOrder: ['JP']
                 },
                 SAM: {
-                    name: "SAM",
+                    name: "Suspicious Activity Monitoring (SAM)",
                     layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
                     primaryLayers: ['US'],
                     fallbackOrder: ['UK', 'DE', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
@@ -46,24 +58,66 @@
                     fallbackOrder: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US']
                 },
                 VAT: {
-                    name: "VAT",
+                    name: "Value Added Tax (VAT)",
                     layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR', 'US', 'JP'],
                     primaryLayers: ['US', 'JP'],
                     fallbackOrder: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR']
                 }
             }
         },
-        Seller: {
-            name: "Seller",
+        TSE: {
+            name: "Trusted Seller Experience (TSE)",
             functions: {
-                ProductQuality: {
-                    name: "Product Quality",
-                    layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
-                    primaryLayers: ['US'],
-                    fallbackOrder: ['UK', 'DE', 'FR']
+                PQ: {
+                    name: "Product Quality (PQ)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
                 },
-                FraudPrevention: {
-                    name: "Fraud Prevention",
+                RA: {
+                    name: "Reported Abuse (RA)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
+                },
+                AtoZ: {
+                    name: "A-to-z Guarantee Claims seller-facing (Claims-seller)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
+                },
+                SAP: {
+                    name: "Sales Abuse Prevention (SAP)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
+                },
+                RPSA: {
+                    name: "Restricted Product Seller Appeals (RPSA)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
+                },
+                PAT: {
+                    name: "Product Authentication Team (PAT)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
+                },
+                CERT: {
+                    name: "Certification Team (CERT)",
+                    layers: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR', 'UK'],
+                    primaryLayers: ['UK', 'AE', 'BE', 'MX', 'NL', 'PL', 'SE', 'TR'],
+                    fallbackOrder: ['US', 'AE', 'EG', 'SA', 'AU', 'BE', 'IE', 'NL', 'PL', 'SE', 'SG', 'MX', 'BR', 'CA', 'ES', 'FR', 'IT', 'JP', 'DE', 'IN', 'TR']
+                },
+APAY Seller: {
+                    name: "APAY Seller",
+                    layers: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP', 'UK'],
+                    primaryLayers: ['UK', 'US'],
+                    fallbackOrder: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP']
+                },
+                FP: {
+                    name: "Fraud Prevention (FP)",
                     layers: ['US', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG', 'DE'],
                     primaryLayers: ['US'],
                     fallbackOrder: ['UK', 'DE', 'FR']
