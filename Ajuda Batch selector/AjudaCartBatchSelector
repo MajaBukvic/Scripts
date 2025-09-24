@@ -62,9 +62,9 @@
                 },
                 SAM: {
                     name: "Suspicious Activity Monitoring (SAM)",
-                    layers: COMMON_CONFIGS.layers.US_AE_JP_IN_TR_AU_SE_SG_DE,
-                    primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    secondaryLayers: ['UK', 'DE', 'AE', 'JP', 'IN', 'TR', 'AU', 'SE', 'SG']
+                    layers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'UK', 'US', 'ZA'],
+                    primaryLayers: layers: ['US', 'UK', 'IE'],
+                    secondaryLayers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'UK', 'US', 'ZA']
                 },
                 DAC7: {
                     name: "DAC7",
