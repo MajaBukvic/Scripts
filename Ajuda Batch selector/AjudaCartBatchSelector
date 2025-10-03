@@ -63,8 +63,8 @@
                 SAM: {
                     name: "Suspicious Activity Monitoring (SAM)",
                     layers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'UK', 'US', 'ZA'],
-                    primaryLayers: ['US', 'UK', 'IE'],
-                    secondaryLayers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'UK', 'US', 'ZA']
+                    primaryLayers: ['BE', 'MX'],
+                    secondaryLayers: ['AE', 'AU', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'UK', 'US', 'ZA']
                 },
                 DAC7: {
                     name: "DAC7",
