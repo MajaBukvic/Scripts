@@ -1,10 +1,14 @@
 // ==UserScript==
 // @name         Content Validator
-// @namespace    tampermonkey.net
+// @namespace    https://github.com/MajaBukvic/Scripts
 // @version      1.0
 // @description  Validates content and exports results to CSV
+// @author       Your Name
 // @match        https://share.amazon.com/sites/amazonwatson/*
 // @grant        GM_download
+// @license      MIT
+// @supportURL   https://github.com/MajaBukvic/Scripts/issues
+// @homepage     https://github.com/MajaBukvic/Scripts/tree/main/Content-validator
 // ==/UserScript==
 
 (function() {
