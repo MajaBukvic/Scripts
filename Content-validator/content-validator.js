@@ -3,7 +3,7 @@
 // @namespace    https://github.com/MajaBukvic/Scripts
 // @version      1.0
 // @description  Validates content and exports results to CSV
-// @author       Your Name
+// @author       Maja Bukvic
 // @match        https://share.amazon.com/sites/amazonwatson/*
 // @grant        GM_download
 // @license      MIT
