@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Content Validator
 // @namespace    https://github.com/MajaBukvic/Scripts
-// @version      1.1
+// @version      1.2
 // @description  Validates content and exports results to CSV
 // @author       Maja Bukvic
 // @match        https://share.amazon.com/sites/amazonwatson/*
@@ -390,6 +390,7 @@ function validateWatsonSOPStructure(doc, issues) {
             type: type,
             element: rule.pattern,
             issue: description,
+            required: rule.required,
             suggestion: rule.suggestion,
             location: location
         });
@@ -497,13 +498,13 @@ function validateWatsonSOPStructure(doc, issues) {
 // Define validation rules
 const validationRules = [
   {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<title>",
-    "required": true,
-    "suggestion": "Include descriptive <title> tag",
-    "description": "Missing <title> tag"
-  },
+  "category": "html",
+  "checkType": "regex",
+  "pattern": "<title>\\s*\\S+",
+  "required": true,
+  "suggestion": "Include descriptive <title> tag with content",
+  "description": "Missing or empty <title> tag"
+},
   {
     "category": "html",
     "checkType": "regex",
@@ -655,14 +656,6 @@ const validationRules = [
     "required": true,
     "suggestion": "Add meta description",
     "description": "Missing meta description"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<meta\\s+name=['\\\"]viewport['\\\"].*>",
-    "required": true,
-    "suggestion": "Add viewport meta for responsiveness",
-    "description": "Missing viewport tag"
   },
   {
     "category": "html",
@@ -1057,13 +1050,22 @@ const validationRules = [
     "description": "Debug JS found"
   },
   {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h1[^>]*>.*?</h1>",
-    "required": true,
-    "suggestion": "Include one <h1>",
-    "description": "Missing or multiple H1"
-  },
+  "category": "html",
+  "checkType": "required_tag",
+  "pattern": "<h1>",
+  "required": true,
+  "suggestion": "Include one <h1> heading",
+  "description": "Missing H1 heading"
+},
+{
+  "category": "html",
+  "checkType": "regex",
+  "pattern": "(<h1[^>]*>.*?</h1>.*?){2,}",
+  "required": false,
+  "suggestion": "Use only one <h1> per page",
+  "description": "Multiple <h1> elements found"
+},
+/*
   {
     "category": "html",
     "checkType": "regex",
@@ -1072,12 +1074,13 @@ const validationRules = [
     "suggestion": "Use <h2> for sections",
     "description": "Missing section heading"
   },
+  */
   {
     "category": "html",
     "checkType": "regex",
     "pattern": "<br\\s*/?>\\s*<br\\s*/?>",
     "required": false,
-    "suggestion": "Use CSS margin for spacing",
+    "suggestion": "Check if you should use a standalone tag instead",
     "description": "Multiple <br> tags found"
   },
   {
@@ -2292,14 +2295,6 @@ const validationRules = [
   {
     "category": "html",
     "checkType": "regex",
-    "pattern": "<div[^>]*class=\"ms-rtestate-field\"",
-    "required": false,
-    "suggestion": "Remove SharePoint editing markup",
-    "description": "SharePoint ms-rtestate-field wrapper present"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
     "pattern": "<o:p>",
     "required": false,
     "suggestion": "Remove MS Office O:P tags",
@@ -2336,14 +2331,6 @@ const validationRules = [
     "required": false,
     "suggestion": "Do not include <style> in the content body",
     "description": "Style tags must not appear in content region"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<meta[^>]*http-equiv=['\\\"]x-ua-compatible['\\\"]",
-    "required": false,
-    "suggestion": "Remove legacy compatibility meta tags",
-    "description": "Deprecated IE compatibility meta tag"
   },
   {
     "category": "html",
