@@ -1371,7 +1371,7 @@ const validationRules = [
   "suggestion": "Change <div class=\"col-TOC\"> to <div id=\"col-TOC\">. The toc-body element must be an ID, not a class.",
   "description": "col-TOC incorrectly used as class instead of ID"
 },
-    {
+{
   "category": "structure",
   "checkType": "regex",
   "pattern": "<div[^>]*class=['\"][^'\"]*\\bcol-body\\b[^'\"]*['\"]",
