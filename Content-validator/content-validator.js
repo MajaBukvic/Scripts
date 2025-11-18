@@ -255,13 +255,14 @@
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
             // Include more detailed information in the headers
-            const headers = ['Type', 'Element', 'Issue', 'Suggestion', 'Location in Code'];
+            const headers = ['Type', 'Element', 'Issue', 'Required', 'Suggestion', 'Location in Code'];
             const csvContent = [
                 headers.join(','),
                 ...issues.map(issue => [
                     issue.type,
                     issue.element,
                     issue.issue,
+                    issue.required,
                     issue.suggestion,
                     issue.location || 'N/A'
                 ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
@@ -2632,14 +2633,6 @@ const validationRules = [
   {
     "category": "interactive",
     "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]dialog['\\\"](?![\\s\\S]*close)",
-    "required": false,
-    "suggestion": "Ensure dialog has visible close control",
-    "description": "Dialog missing close control"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
     "pattern": "<div[^>]*role=['\\\"]dialog['\\\"](?![\\s\\S]*<button[^>]*class=\"close\")",
     "required": false,
     "suggestion": "Dialogs must include a close button",
@@ -2668,14 +2661,6 @@ const validationRules = [
     "required": false,
     "suggestion": "aria-describedby must reference a real element",
     "description": "Broken aria-describedby reference"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "role=['\\\"]dialog['\\\"](?![\\s\\S]*tabindex)",
-    "required": true,
-    "suggestion": "Dialog elements must trap focus",
-    "description": "Dialog missing focus trap capability"
   },
   {
     "category": "interactive",
@@ -2712,18 +2697,10 @@ const validationRules = [
   {
     "category": "interactive",
     "checkType": "regex",
-    "pattern": "<button[^>]*(onclick|onmouseover|onfocus)=",
+    "pattern": "<button[^>]*(onclick|onmouseover|onfocus|onkeydown)=",
     "required": false,
     "suggestion": "Move inline event handlers to JS files",
     "description": "Inline event handler detected"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*(onclick|onmouseover|onkeydown)=",
-    "required": false,
-    "suggestion": "Avoid inline event handlers on non-interactive elements",
-    "description": "Inline event handler on non-interactive element"
   },
   {
     "category": "interactive",
