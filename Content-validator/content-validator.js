@@ -2620,14 +2620,6 @@ const validationRules = [
     "description": "Column flex layout missing responsive variant"
   },
   {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "z-index\\s*:\\s*(1[0-9]{2}|[2-9][0-9]{2})",
-    "required": true,
-    "suggestion": "Keep z-index below 100 to avoid stacking issues",
-    "description": "Excessive z-index detected"
-  },
-  {
     "category": "interactive",
     "checkType": "regex",
     "pattern": "<button[^>]*aria-controls=['\\\"]([^'\\\"]+)['\\\"](?![\\s\\S]*id=['\\\"]\\1['\\\"])",
