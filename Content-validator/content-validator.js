@@ -99,7 +99,6 @@ function validateAndExport() {
                 }
             });
             validateWatsonSOPStructure(contentDoc, issues);
-        });
 
         if (issues.length > 0) {
             exportToCSV(issues);
