@@ -51,61 +51,73 @@
     }
 
 function validateAndExport() {
-    // Find the specific content area and exclude WatsonByline
-    const contentContainer = document.querySelector('#WebPartWPQ4 > div.ms-rtestate-field');
+    // Find WatsonSOPSource and WatsonSOPBody
+    const watsonSource = document.querySelector('#WatsonSOPSource');
+    const watsonBody = document.querySelector('.WatsonSOPBody');
 
-    if (!contentContainer) {
-        alert('No content found in #WebPartWPQ4 > div.ms-rtestate-field!');
+    if (!watsonSource || !watsonBody) {
+        alert('Could not find #WatsonSOPSource or .WatsonSOPBody on this page!');
         return;
     }
 
     const issues = [];
 
-    // Clone the container to avoid modifying the original
-    const contentClone = contentContainer.cloneNode(true);
+    // Create a container with just the content we want to validate
+    const tempContainer = document.createElement('div');
+
+    // Clone WatsonSOPSource
+    const sourceClone = watsonSource.cloneNode(true);
+    tempContainer.appendChild(sourceClone);
+
+    // Clone WatsonSOPBody
+    const bodyClone = watsonBody.cloneNode(true);
 
     // Remove WatsonByline divs from the clone
-    const bylineElements = contentClone.querySelectorAll('div.WatsonByline');
+    const bylineElements = bodyClone.querySelectorAll('div.WatsonByline');
     bylineElements.forEach(el => el.remove());
 
-    // Get the HTML without WatsonByline
-    const contentHTML = contentClone.outerHTML;
+    tempContainer.appendChild(bodyClone);
+
+    // Get the HTML of our targeted content
+    const contentHTML = tempContainer.innerHTML;
     const parser = new DOMParser();
     const doc = parser.parseFromString(contentHTML, "text/html");
-    const contentDoc = doc.body.firstChild;
+    const contentDoc = doc.body;
 
     validationRules.forEach(rule => {
-                try {
-                    const category = rule.category.toLowerCase();
-                    switch(category) {
-                        case 'html':
-                            checkHtmlRule(rule, contentDoc, contentHTML, issues);
-                            break;
-                        case 'css':
-                            checkCssRule(rule, contentHTML, issues);
-                            break;
-                        case 'accessibility':
-                            checkAccessibilityRule(rule, contentDoc, issues);
-                            break;
-                        case 'content_structure':
-                            checkContentStructureRule(rule, contentDoc, contentHTML, issues);
-                            break;
-                        case 'interactive':
-                            checkInteractiveRule(rule, contentDoc, issues);
-                            break;
-                    }
-                } catch (e) {
-                    console.error(`Error processing rule: ${rule.pattern}`, e);
-                }
-            });
-            validateWatsonSOPStructure(contentDoc, issues);
-
-        if (issues.length > 0) {
-            exportToCSV(issues);
-        } else {
-            alert('No issues found in the content!');
+        try {
+            const category = rule.category.toLowerCase();
+            switch(category) {
+                case 'html':
+                    checkHtmlRule(rule, contentDoc, contentHTML, issues);
+                    break;
+                case 'css':
+                    checkCssRule(rule, contentHTML, issues);
+                    break;
+                case 'accessibility':
+                    checkAccessibilityRule(rule, contentDoc, issues);
+                    break;
+                case 'content_structure':
+                    checkContentStructureRule(rule, contentDoc, contentHTML, issues);
+                    break;
+                case 'interactive':
+                    checkInteractiveRule(rule, contentDoc, issues);
+                    break;
+            }
+        } catch (e) {
+            console.error(`Error processing rule: ${rule.pattern}`, e);
         }
+    });
+
+    // Call custom structure validation
+    validateWatsonSOPStructure(contentDoc, issues);
+
+    if (issues.length > 0) {
+        exportToCSV(issues);
+    } else {
+        alert('No issues found in the content!');
     }
+}
     function checkHtmlRule(rule, doc, html, issues) {
         try {
             if (rule.checkType === "required_tag") {
@@ -372,7 +384,7 @@ function validateWatsonSOPStructure(doc, issues) {
         console.error('Error in Watson SOP structure validation:', e);
     }
 }
-    
+
     function addIssue(issues, type, rule, count = null) {
         let description = rule.description;
         if (count !== null) {
@@ -1361,7 +1373,7 @@ const validationRules = [
   "suggestion": "Add <div id=\"WatsonSOPSource\"> container to the document",
   "description": "Missing WatsonSOPSource version history container"
  },
-    
+
 {
   "category": "structure",
   "checkType": "regex",
