@@ -51,12 +51,20 @@
     }
 
 function validateAndExport() {
-    // Find WatsonSOPSource and WatsonSOPBody
-    const watsonSource = document.querySelector('#WatsonSOPSource');
-    const watsonBody = document.querySelector('.WatsonSOPBody');
+    // Target the actual content area, not the web part wrapper
+    const contentArea = document.querySelector('#WebPartWPQ4 .ms-rtestate-field');
+
+    if (!contentArea) {
+        alert('Could not find the content area!');
+        return;
+    }
+
+    // Now find WatsonSOPSource and WatsonSOPBody WITHIN the content area
+    const watsonSource = contentArea.querySelector('#WatsonSOPSource');
+    const watsonBody = contentArea.querySelector('.WatsonSOPBody');
 
     if (!watsonSource || !watsonBody) {
-        alert('Could not find #WatsonSOPSource or .WatsonSOPBody on this page!');
+        alert('Could not find #WatsonSOPSource or .WatsonSOPBody in the content area!');
         return;
     }
 
@@ -1769,14 +1777,6 @@ const validationRules = [
   {
     "category": "html",
     "checkType": "regex",
-    "pattern": "class=\"[A-Z]",
-    "required": false,
-    "suggestion": "Use lowercase with hyphens for class names (e.g., my-class)",
-    "description": "Class name uses uppercase (non-standard convention)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
     "pattern": "class=\"[^\"]*\\s{2,}[^\"]*\"",
     "required": false,
     "suggestion": "Remove extra spaces between class names",
@@ -1823,7 +1823,7 @@ const validationRules = [
     "description": "UI interaction element missing .ui class"
   },
   {
-    "category": "html",
+    "category": "accessibility",
     "checkType": "regex",
     "pattern": "<div[^>]*class=\"(note|warning|important|tip|example|exception|bestPractice|annotation|script|template)\"(?![^>]*role=)",
     "required": true,
