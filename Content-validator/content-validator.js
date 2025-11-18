@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Content Validator
 // @namespace    https://github.com/MajaBukvic/Scripts
-// @version      1.0
+// @version      1.1
 // @description  Validates content and exports results to CSV
 // @author       Maja Bukvic
 // @match        https://share.amazon.com/sites/amazonwatson/*
@@ -91,6 +91,7 @@
                     console.error(`Error processing rule: ${rule.pattern}`, e);
                 }
             });
+            validateWatsonSOPStructure(contentDoc, issues);
         });
 
         if (issues.length > 0) {
@@ -221,6 +222,151 @@
             console.error(`Error in interactive rule ${rule.pattern}: ${e}`);
         }
     }
+// Custom Watson SOP Structure Validation Function
+function validateWatsonSOPStructure(doc, issues) {
+    try {
+        // Check #WatsonSOPSource exists (standalone element, not a parent)
+        const watsonSource = doc.querySelector('#WatsonSOPSource');
+        if (!watsonSource) {
+            addIssue(issues, "Structure", {
+                pattern: "#WatsonSOPSource",
+                description: "Missing #WatsonSOPSource element",
+                suggestion: "Add <div id=\"WatsonSOPSource\"></div> as a standalone element",
+                required: true
+            });
+        }
+
+        // Check for WatsonSOPBody class (standalone, not inside WatsonSOPSource)
+        const watsonBody = doc.querySelector('.WatsonSOPBody');
+        if (!watsonBody) {
+            addIssue(issues, "Structure", {
+                pattern: ".WatsonSOPBody",
+                description: "Missing div.WatsonSOPBody",
+                suggestion: "Add <div class=\"WatsonSOPBody\"></div>",
+                required: true
+            });
+            return; // Cannot continue without WatsonSOPBody
+        }
+
+        // Check for col-TOC and col-body
+        const colTOC = doc.querySelector('#col-TOC');
+        const colBody = doc.querySelector('#col-body');
+
+        // If either col-TOC or col-body exists, validate row structure
+        if (colTOC || colBody) {
+            const row = watsonBody.querySelector('.row');
+
+            if (!row) {
+                addIssue(issues, "Structure", {
+                    pattern: ".row",
+                    description: "Missing div.row when col-TOC or col-body present",
+                    suggestion: "Add <div class=\"row\"> inside div.WatsonSOPBody to contain #col-TOC and #col-body",
+                    required: true
+                });
+            } else {
+                // Verify col-TOC and col-body are children of row
+                if (colTOC && !row.contains(colTOC)) {
+                    addIssue(issues, "Structure", {
+                        pattern: "#col-TOC parent",
+                        description: "#col-TOC must be child of div.row",
+                        suggestion: "Move #col-TOC inside div.row",
+                        required: true
+                    });
+                }
+
+                if (colBody && !row.contains(colBody)) {
+                    addIssue(issues, "Structure", {
+                        pattern: "#col-body parent",
+                        description: "#col-body must be child of div.row",
+                        suggestion: "Move #col-body inside div.row",
+                        required: true
+                    });
+                }
+
+                // Check order: col-TOC should come before col-body if both exist
+                if (colTOC && colBody) {
+                    const tocIndex = Array.from(row.children).indexOf(colTOC);
+                    const bodyIndex = Array.from(row.children).indexOf(colBody);
+
+                    if (tocIndex > bodyIndex && tocIndex !== -1 && bodyIndex !== -1) {
+                        addIssue(issues, "Structure", {
+                            pattern: "#col-TOC order",
+                            description: "#col-TOC must appear before #col-body",
+                            suggestion: "Reorder elements: #col-TOC should come before #col-body in div.row",
+                            required: true
+                        });
+                    }
+                }
+            }
+
+            // Verify row is child of WatsonSOPBody
+            if (row && !watsonBody.contains(row)) {
+                addIssue(issues, "Structure", {
+                    pattern: ".row parent",
+                    description: "div.row must be child of div.WatsonSOPBody",
+                    suggestion: "Move div.row inside div.WatsonSOPBody",
+                    required: true
+                });
+            }
+        }
+
+        // Check for inline styles inside WatsonSOPBody
+        if (watsonBody) {
+            const elementsWithInlineStyles = watsonBody.querySelectorAll('[style]');
+
+            if (elementsWithInlineStyles.length > 0) {
+                elementsWithInlineStyles.forEach((element) => {
+                    const tagName = element.tagName.toLowerCase();
+                    const styleValue = element.getAttribute('style');
+
+                    addIssue(issues, "CSS", {
+                        pattern: `${tagName}[style]`,
+                        description: `Inline style detected on ${tagName} element inside WatsonSOPBody`,
+                        suggestion: `Remove style="${styleValue}" and use externally linked standardized CSS instead`,
+                        required: true
+                    });
+                });
+            }
+        }
+
+        // Check for approved CSS files
+        const approvedCssFiles = [
+            "Watson-SOP-standard.css",
+            "Interactive_features.css",
+            "Buttons.css",
+            "Function_menu.css",
+            "Grey_2_tone.css",
+            "WhiteTable.css",
+            "KeyTermsTable.css",
+            "DefinitionTable.css"
+        ];
+
+        // Find all <link> tags with rel="stylesheet"
+        const linkTags = doc.querySelectorAll('link[rel="stylesheet"]');
+
+        linkTags.forEach(link => {
+            const href = link.getAttribute('href');
+            if (href) {
+                // Extract just the filename from the href
+                const filename = href.split('/').pop().split('?');
+
+                // Check if this CSS file is in the approved list
+                if (!approvedCssFiles.includes(filename)) {
+                    addIssue(issues, "CSS", {
+                        pattern: `link[href*="${filename}"]`,
+                        description: `Unapproved CSS file linked: ${filename}`,
+                        suggestion: `Replace "${filename}" with one of the approved standardized CSS files: ${approvedCssFiles.join(', ')}`,
+                        required: true
+                    });
+                }
+            }
+        });
+
+    } catch (e) {
+        console.error('Error in Watson SOP structure validation:', e);
+    }
+}
+    
     function addIssue(issues, type, rule, count = null) {
         let description = rule.description;
         if (count !== null) {
@@ -1199,13 +1345,54 @@ const validationRules = [
     "description": "Important reminders list structure"
   },
   {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<div id=\"WatsonSOPSource\">",
-    "required": true,
-    "suggestion": "Include WatsonSOPSource div with SOP URL for version history",
-    "description": "Missing version history URL element"
-  },
+  "category": "structure",
+  "checkType": "regex",
+  "pattern": "<div[^>]*id=['\"]WatsonSOPSource['\"]",
+  "required": true,
+  "suggestion": "Add <div id=\"WatsonSOPSource\"> container to the document",
+  "description": "Missing WatsonSOPSource version history container"
+ },
+    
+{
+  "category": "structure",
+  "checkType": "regex",
+  "pattern": "<div[^>]*id=['\"]WatsonSOPBody['\"]",
+  "required": true,
+  "suggestion": "Change <div id=\"WatsonSOPBody\"> to <div class=\"WatsonSOPBody\">. WatsonSOPBody must be a class, not an ID.",
+  "description": "WatsonSOPBody incorrectly used as ID instead of class"
+},
+{
+  "category": "structure",
+  "checkType": "regex",
+  "pattern": "<div[^>]*class=['\"][^'\"]*\\btoc\\b[^'\"]*['\"]",
+  "required": true,
+  "suggestion": "Change <div class=\"toc\"> to <div id=\"toc\">. The toc element must be an ID, not a class.",
+  "description": "toc incorrectly used as class instead of ID"
+},
+{
+  "category": "structure",
+  "checkType": "regex",
+  "pattern": "<div[^>]*class=['\"][^'\"]*\\bcol-TOC\\b[^'\"]*['\"]",
+  "required": true,
+  "suggestion": "Change <div class=\"col-TOC\"> to <div id=\"col-TOC\">. The toc-body element must be an ID, not a class.",
+  "description": "col-TOC incorrectly used as class instead of ID"
+},
+    {
+  "category": "structure",
+  "checkType": "regex",
+  "pattern": "<div[^>]*class=['\"][^'\"]*\\bcol-body\\b[^'\"]*['\"]",
+  "required": true,
+  "suggestion": "Change <div class=\"col-body\"> to <div id=\"col-body\">. The col-body element must be an ID, not a class.",
+  "description": "col-body incorrectly used as class instead of ID"
+},
+    {
+  "category": "structure",
+  "checkType": "regex",
+  "pattern": "<div[^>]*class=['\"][^'\"]*\\brow\\b[^'\"]*['\"]",
+  "required": true,
+  "suggestion": "Change <div class=\"row\"> to <div id=\"row\">. The row element must be an ID, not a class.",
+  "description": "row incorrectly used as class instead of ID"
+},
   {
     "category": "css",
     "checkType": "required_property",
@@ -2174,6 +2361,14 @@ const validationRules = [
     "suggestion": "Do not include inline <script> tags in content",
     "description": "Inline script tag found"
   },
+{
+  "category": "css",
+  "checkType": "regex",
+  "pattern": "<div[^>]*class=['\"][^'\"]*WatsonSOPBody[^'\"]*['\"][^>]*>[\\s\\S]*?style=['\"][^'\"]+['\"]",
+  "required": true,
+  "suggestion": "Remove inline styles from elements inside div.WatsonSOPBody. Use externally linked standardized CSS instead.",
+  "description": "Inline styles detected inside WatsonSOPBody"
+},
   {
     "category": "css",
     "checkType": "forbidden_property",
