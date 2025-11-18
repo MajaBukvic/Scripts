@@ -393,7 +393,7 @@ function validateWatsonSOPStructure(doc, issues) {
             const regex = new RegExp(rule.pattern, 'gi');
             const match = regex.exec(document.documentElement.outerHTML);
             if (match) {
-                const context = match.input.substr(Math.max(0, match.index - 50), 100);
+                const context = match.input.substr(Math.max(0, match.index - 100), 500);
                 location = `...${context}...`;
             }
         } catch (e) {
@@ -634,19 +634,19 @@ const validationRules = [
   {
     "category": "html",
     "checkType": "regex",
-    "pattern": "<ul[^>]*>(?!.*<li>)",
+    "pattern": "<ul[^>]*>\\s*(?!\\s*<li)",
     "required": false,
     "suggestion": "Ensure lists contain <li> elements",
     "description": "Empty list detected"
   },
   {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<ol[^>]*>(?!.*<li>)",
-    "required": false,
-    "suggestion": "Ensure ordered lists contain <li>",
-    "description": "Empty ordered list"
-  },
+  "category": "html",
+  "checkType": "regex",
+  "pattern": "<ol[^>]*>\\s*(?!\\s*<li)",
+  "required": false,
+  "suggestion": "Ensure ordered lists contain <li>",
+  "description": "Empty ordered list"
+},
   {
     "category": "html",
     "checkType": "regex",
@@ -866,7 +866,7 @@ const validationRules = [
   {
     "category": "css",
     "checkType": "forbidden_property",
-    "pattern": "important",
+    "pattern": "!important",
     "required": true,
     "suggestion": "Avoid !important; fix cascade",
     "description": "!important used"
@@ -887,6 +887,7 @@ const validationRules = [
     "suggestion": "Prefer flexbox/grid",
     "description": "Inline-block layout discouraged"
   },
+    /*
   {
     "category": "css",
     "checkType": "forbidden_property",
@@ -895,6 +896,7 @@ const validationRules = [
     "suggestion": "Keep z-index <100",
     "description": "High z-index found"
   },
+  */
   {
     "category": "css",
     "checkType": "regex",
@@ -1505,14 +1507,6 @@ const validationRules = [
     "required": false,
     "suggestion": "Add screen reader description to floating TOC",
     "description": "Floating TOC missing screen reader description"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div class=\"WatsonSOPBody\">\\s*<div class=\"row\">(?!.*<div id=\"col-TOC\">)",
-    "required": false,
-    "suggestion": "Row container should contain col-TOC for floating TOC",
-    "description": "Row container missing col-TOC structure"
   },
   {
     "category": "html",
