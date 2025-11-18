@@ -2052,13 +2052,13 @@ const validationRules = [
     "description": "Heading out of order (content before H1)"
   },
   {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h[4]>[\\s\\S]*?<h2>",
-    "required": false,
-    "suggestion": "Do not skip from h2 to h4",
-    "description": "Heading hierarchy violation (h2\u2192h4)"
-  },
+  "category": "html",
+  "checkType": "regex",
+  "pattern": "<h2>.*?</h2>.*?<h4>",
+  "required": false,
+  "suggestion": "Use h3 before h4; maintain heading hierarchy",
+  "description": "Heading hierarchy violated (h2 to h4 skip)"
+},
   {
     "category": "html",
     "checkType": "regex",
