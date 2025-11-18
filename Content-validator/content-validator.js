@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Content Validator
 // @namespace    https://github.com/MajaBukvic/Scripts
-// @version      1.3
+// @version      1.4
 // @description  Validates content and exports results to CSV
 // @author       Maja Bukvic
 // @match        https://share.amazon.com/sites/amazonwatson/*
@@ -51,46 +51,34 @@
     }
 
 function validateAndExport() {
-    // Target the actual content area, not the web part wrapper
-    const contentArea = document.querySelector('#WebPartWPQ4 .ms-rtestate-field');
-
-    if (!contentArea) {
-        alert('Could not find the content area!');
-        return;
+    // First, check if WatsonSOPSource exists (standalone check only)
+    const watsonSource = document.querySelector('#WatsonSOPSource');
+    if (!watsonSource) {
+        alert('Warning: #WatsonSOPSource element not found on this page!');
     }
 
-    // Now find WatsonSOPSource and WatsonSOPBody WITHIN the content area
-    const watsonSource = contentArea.querySelector('#WatsonSOPSource');
-    const watsonBody = contentArea.querySelector('.WatsonSOPBody');
+    // Now find and validate only content inside WatsonSOPBody
+    const watsonBody = document.querySelector('.WatsonSOPBody');
 
-    if (!watsonSource || !watsonBody) {
-        alert('Could not find #WatsonSOPSource or .WatsonSOPBody in the content area!');
+    if (!watsonBody) {
+        alert('Could not find .WatsonSOPBody on this page!');
         return;
     }
 
     const issues = [];
 
-    // Create a container with just the content we want to validate
-    const tempContainer = document.createElement('div');
-
-    // Clone WatsonSOPSource
-    const sourceClone = watsonSource.cloneNode(true);
-    tempContainer.appendChild(sourceClone);
-
-    // Clone WatsonSOPBody
+    // Clone WatsonSOPBody to avoid modifying the live page
     const bodyClone = watsonBody.cloneNode(true);
 
     // Remove WatsonByline divs from the clone
     const bylineElements = bodyClone.querySelectorAll('div.WatsonByline');
     bylineElements.forEach(el => el.remove());
 
-    tempContainer.appendChild(bodyClone);
-
-    // Get the HTML of our targeted content
-    const contentHTML = tempContainer.innerHTML;
+    // Get the HTML of just the WatsonSOPBody content
+    const contentHTML = bodyClone.outerHTML;
     const parser = new DOMParser();
     const doc = parser.parseFromString(contentHTML, "text/html");
-    const contentDoc = doc.body;
+    const contentDoc = doc.body.firstChild;
 
     validationRules.forEach(rule => {
         try {
@@ -117,7 +105,7 @@ function validateAndExport() {
         }
     });
 
-    // Call custom structure validation
+    // Call custom structure validation (this will check WatsonSOPSource again within the doc)
     validateWatsonSOPStructure(contentDoc, issues);
 
     if (issues.length > 0) {
