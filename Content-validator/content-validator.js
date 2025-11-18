@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Content Validator
 // @namespace    https://github.com/MajaBukvic/Scripts
-// @version      1.2
+// @version      1.3
 // @description  Validates content and exports results to CSV
 // @author       Maja Bukvic
 // @match        https://share.amazon.com/sites/amazonwatson/*
@@ -50,24 +50,31 @@
         addValidationButton();
     }
 
-    function validateAndExport() {
-        // Find all divs with webpartid
-        const contentDivs = document.querySelectorAll('div[webpartid]');
-        if (!contentDivs || contentDivs.length === 0) {
-            alert('No content divs with webpartid found on this page!');
-            return;
-        }
+function validateAndExport() {
+    // Find the specific content area and exclude WatsonByline
+    const contentContainer = document.querySelector('#WebPartWPQ4 > div.ms-rtestate-field');
 
-        const issues = [];
+    if (!contentContainer) {
+        alert('No content found in #WebPartWPQ4 > div.ms-rtestate-field!');
+        return;
+    }
 
-        // Process each webpartid div
-        contentDivs.forEach(div => {
-            const contentHTML = div.outerHTML;
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(contentHTML, "text/html");
-            const contentDoc = doc.querySelector('div[webpartid]');
+    const issues = [];
 
-            validationRules.forEach(rule => {
+    // Clone the container to avoid modifying the original
+    const contentClone = contentContainer.cloneNode(true);
+
+    // Remove WatsonByline divs from the clone
+    const bylineElements = contentClone.querySelectorAll('div.WatsonByline');
+    bylineElements.forEach(el => el.remove());
+
+    // Get the HTML without WatsonByline
+    const contentHTML = contentClone.outerHTML;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(contentHTML, "text/html");
+    const contentDoc = doc.body.firstChild;
+
+    validationRules.forEach(rule => {
                 try {
                     const category = rule.category.toLowerCase();
                     switch(category) {
