@@ -2214,18 +2214,10 @@ const validationRules = [
   {
     "category": "html",
     "checkType": "regex",
-    "pattern": "<ul[^>]*style=",
+    "pattern": "<li[^>]*style=",
     "required": false,
-    "suggestion": "Remove inline styles from unordered lists",
-    "description": "Inline style applied to list element"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<ol[^>]*style=",
-    "required": false,
-    "suggestion": "Remove inline styles from ordered lists",
-    "description": "Inline style applied to ordered list"
+    "suggestion": "Remove inline styles from list items",
+    "description": "Inline style applied to list item"
   },
   {
     "category": "html",
