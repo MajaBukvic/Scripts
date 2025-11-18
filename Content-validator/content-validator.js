@@ -618,14 +618,6 @@ const validationRules = [
   {
     "category": "html",
     "checkType": "regex",
-    "pattern": "<th(?![^>]*scope=)[^>]*>",
-    "required": false,
-    "suggestion": "Add scope='col' or 'row'",
-    "description": "Table header missing scope"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
     "pattern": "<table(?![^>]*summary=)[^>]*>",
     "required": false,
     "suggestion": "Add summary/caption for table context",
@@ -1180,14 +1172,6 @@ const validationRules = [
     "description": "CSS targeting SharePoint s4 class elements"
   },
   {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<div class=\"WatsonSOPBody\">",
-    "required": true,
-    "suggestion": "Wrap all SOP content in WatsonSOPBody div",
-    "description": "Missing WatsonSOPBody wrapper"
-  },
-  {
     "category": "css",
     "checkType": "required_property",
     "pattern": "\\.WatsonSOPBody\\s*\\{[^}]*margin-left\\s*:\\s*30px",
@@ -1363,15 +1347,6 @@ const validationRules = [
     "suggestion": "Use DO/DO_NOT classes for important reminders list",
     "description": "Important reminders list structure"
   },
-  {
-  "category": "structure",
-  "checkType": "regex",
-  "pattern": "<div[^>]*id=['\"]WatsonSOPSource['\"]",
-  "required": true,
-  "suggestion": "Add <div id=\"WatsonSOPSource\"> container to the document",
-  "description": "Missing WatsonSOPSource version history container"
- },
-
 {
   "category": "structure",
   "checkType": "regex",
