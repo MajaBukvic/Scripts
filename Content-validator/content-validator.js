@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Content Validator
 // @namespace    https://github.com/MajaBukvic/Scripts
-// @version      1.4
-// @description  Validates content and exports results to CSV
+// @version      3.0
+// @description  Validates Watson SOP content based on standardized rules, accessibility, and CSS compliance
 // @author       Maja Bukvic
 // @match        https://share.amazon.com/sites/amazonwatson/*
 // @grant        GM_download
@@ -14,7 +14,97 @@
 (function() {
     'use strict';
 
-    // Add validation button to Watson header
+    // ===========================================
+    // CONFIGURATION
+    // ===========================================
+
+    const CONFIG = {
+        // Core stylesheets - at least ONE must be present
+        coreStylesheets: [
+            'watson-sop-standard.css',
+            'interactive_features.css',
+            'buttons.css',
+            'function_menu.css'
+        ],
+
+        // Table stylesheets - required if tables exist
+        tableStylesheets: [
+            'grey_2_tone.css',
+            'whitetable.css',
+            'keytermstable.css',
+            'definitiontable.css'
+        ],
+
+        // System stylesheets to ignore
+        systemStylesheets: [
+            'madcap',
+            'corev15',
+            'core.css',
+            'controls',
+            'search',
+            'sprite',
+            'skinsupport'
+        ],
+
+        // Standard button classes
+        buttonClasses: [
+            'button--1', 'button--2', 'button--3', 'button--4',
+            'animated_button_red', 'animated_button_green',
+            'collapsebtn', 'expandbtn', 'pulsing_button',
+            'update-button', 'collapsible', 'collapsible-hide',
+            'tablinks', 'dropbtn', 'filter-button'
+        ],
+
+        // Standard callout classes
+        calloutClasses: [
+            'example', 'exception', 'bestPractice', 'note', 'tip',
+            'warning', 'important', 'SOPupdate', 'quote',
+            'annotation', 'accessibility', 'template'
+        ],
+
+        // Standard image classes
+        imageClasses: [
+            'flowchart', 'zoom', 'flag', 'icon', 'no_border', 'tiny'
+        ],
+
+        // Standard colored margin classes
+        coloredMarginClasses: [
+            'green', 'blue', 'orange', 'pink', 'red', 'yellow',
+            'purple', 'darkblue', 'darkgreen', 'hotpink', 'aqua', 'sage'
+        ],
+
+        // Standard emphasis box classes
+        emphasisBoxClasses: [
+            'orangeBox', 'blueBox', 'greyBox', 'inkBox'
+        ],
+
+        // Standard list classes
+        listClasses: [
+            'disc', 'Square', 'Circle', 'Important_reminders'
+        ],
+
+        // Non-standard fonts to flag
+        nonStandardFonts: [
+            'Arial', 'Helvetica', 'Calibri', 'Times New Roman',
+            'Verdana', 'Georgia', 'Tahoma', 'Comic Sans'
+        ],
+
+        // Deprecated HTML attributes
+        deprecatedAttributes: [
+            { attr: 'align', suggestion: 'Use CSS text-align or margin instead' },
+            { attr: 'valign', suggestion: 'Use CSS vertical-align instead' },
+            { attr: 'bgcolor', suggestion: 'Use CSS background-color instead' },
+            { attr: 'hspace', suggestion: 'Use CSS margin instead' },
+            { attr: 'vspace', suggestion: 'Use CSS margin instead' },
+            { attr: 'nowrap', suggestion: 'Use CSS white-space: nowrap instead' },
+            { attr: 'background', suggestion: 'Use CSS background-image instead' }
+        ]
+    };
+
+    // ===========================================
+    // INITIALIZATION
+    // ===========================================
+
     function addValidationButton() {
         const menuContainer = document.querySelector('div[style*="position:relative;float:right;right:25px;padding-top:7px;"]');
 
@@ -33,7 +123,6 @@
 
             span.appendChild(link);
 
-            // Insert after Export SOP
             const exportContainer = document.getElementById('exportLinkContainer');
             if (exportContainer) {
                 exportContainer.parentNode.insertBefore(span, exportContainer.nextSibling);
@@ -43,395 +132,2148 @@
         }
     }
 
-    // Initialize button when page loads
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', addValidationButton);
     } else {
         addValidationButton();
     }
 
-function validateAndExport() {
-    // First, check if WatsonSOPSource exists (standalone check only)
-    const watsonSource = document.querySelector('#WatsonSOPSource');
-    if (!watsonSource) {
-        alert('Warning: #WatsonSOPSource element not found on this page!');
-    }
+    // ===========================================
+    // MAIN VALIDATION FUNCTION
+    // ===========================================
 
-    // Now find and validate only content inside WatsonSOPBody
-    const watsonBody = document.querySelector('.WatsonSOPBody');
+    function validateAndExport() {
+        const issues = [];
+        console.log('=== Content Validator v3.0 Starting ===');
 
-    if (!watsonBody) {
-        alert('Could not find .WatsonSOPBody on this page!');
-        return;
-    }
+        // Find ALL content containers
+        const allContentContainers = document.querySelectorAll('div.ms-rtestate-field');
+        console.log('Validator: Found', allContentContainers.length, 'ms-rtestate-field containers');
 
-    const issues = [];
+        if (allContentContainers.length === 0) {
+            alert('Could not find any div.ms-rtestate-field containers on this page!');
+            return;
+        }
 
-    // Clone WatsonSOPBody to avoid modifying the live page
-    const bodyClone = watsonBody.cloneNode(true);
+        // Find WatsonSOPBody and WatsonSOPSource
+        let watsonBody = null;
+        let watsonSource = null;
 
-    // Remove WatsonByline divs from the clone
-    const bylineElements = bodyClone.querySelectorAll('div.WatsonByline');
-    bylineElements.forEach(el => el.remove());
-
-    // Get the HTML of just the WatsonSOPBody content
-    const contentHTML = bodyClone.outerHTML;
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(contentHTML, "text/html");
-    const contentDoc = doc.body.firstChild;
-
-    validationRules.forEach(rule => {
-        try {
-            const category = rule.category.toLowerCase();
-            switch(category) {
-                case 'html':
-                    checkHtmlRule(rule, contentDoc, contentHTML, issues);
-                    break;
-                case 'css':
-                    checkCssRule(rule, contentHTML, issues);
-                    break;
-                case 'accessibility':
-                    checkAccessibilityRule(rule, contentDoc, issues);
-                    break;
-                case 'content_structure':
-                    checkContentStructureRule(rule, contentDoc, contentHTML, issues);
-                    break;
-                case 'interactive':
-                    checkInteractiveRule(rule, contentDoc, issues);
-                    break;
+        // Search all containers
+        allContentContainers.forEach((container, index) => {
+            const body = container.querySelector('.WatsonSOPBody');
+            if (body) {
+                console.log('Validator: Found WatsonSOPBody in container', index);
+                watsonBody = body;
             }
-        } catch (e) {
-            console.error(`Error processing rule: ${rule.pattern}`, e);
-        }
-    });
 
-    // Call custom structure validation (this will check WatsonSOPSource again within the doc)
-    validateWatsonSOPStructure(contentDoc, issues);
-
-    if (issues.length > 0) {
-        exportToCSV(issues);
-    } else {
-        alert('No issues found in the content!');
-    }
-}
-    function checkHtmlRule(rule, doc, html, issues) {
-        try {
-            if (rule.checkType === "required_tag") {
-                const elements = doc.querySelectorAll(rule.pattern.replace(/[<>]/g, ''));
-                if (elements.length === 0 && rule.required) {
-                    addIssue(issues, "HTML", rule);
-                }
-            } else if (rule.checkType === "forbidden_tag") {
-                const elements = doc.querySelectorAll(rule.pattern.replace(/[<>]/g, ''));
-                if (elements.length > 0) {
-                    addIssue(issues, "HTML", rule, elements.length);
-                }
-            } else if (rule.checkType === "regex") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const matches = html.match(regex);
-                if (matches) {
-                    addIssue(issues, "HTML", rule, matches.length);
-                }
-            } else if (rule.checkType === "duplicate_check") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const matches = Array.from(html.matchAll(regex));
-                const ids = matches.map(match => match[1]);
-                const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
-                if (duplicates.length > 0) {
-                    addIssue(issues, "HTML", rule, duplicates.length);
-                }
+            const source = container.querySelector('#WatsonSOPSource');
+            if (source) {
+                watsonSource = source;
             }
-        } catch (e) {
-            console.error(`Error in HTML rule ${rule.pattern}: ${e}`);
-        }
-    }
+        });
 
-    function checkCssRule(rule, html, issues) {
-        try {
-            if (rule.checkType === "forbidden_property" || rule.checkType === "regex") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const matches = html.match(regex);
-                if (matches) {
-                    addIssue(issues, "CSS", rule, matches.length);
-                }
-            } else if (rule.checkType === "required_property") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const matches = html.match(regex);
-                if (!matches && rule.required) {
-                    addIssue(issues, "CSS", rule);
-                }
-            }
-        } catch (e) {
-            console.error(`Error in CSS rule ${rule.pattern}: ${e}`);
-        }
-    }
-
-    function checkAccessibilityRule(rule, doc, issues) {
-        try {
-            if (rule.checkType === "missing_alt") {
-                const elements = doc.querySelectorAll('img:not([alt]), img[alt=""]');
-                if (elements.length > 0) {
-                    addIssue(issues, "Accessibility", rule, elements.length);
-                }
-            } else if (rule.checkType === "regex") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const html = doc.outerHTML;
-                const matches = html.match(regex);
-                if (matches) {
-                    addIssue(issues, "Accessibility", rule, matches.length);
-                }
-            } else if (rule.checkType === "required_tag") {
-                const elements = doc.querySelectorAll(rule.pattern.replace(/[<>]/g, ''));
-                if (elements.length === 0 && rule.required) {
-                    addIssue(issues, "Accessibility", rule);
-                }
-            }
-        } catch (e) {
-            console.error(`Error in accessibility rule ${rule.pattern}: ${e}`);
-        }
-    }
-
-    function checkContentStructureRule(rule, doc, html, issues) {
-        try {
-            if (rule.checkType === "percentage_check") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const matches = html.match(regex);
-                if (matches && matches.length > 0) {
-                    const contentLength = html.length;
-                    const matchesLength = matches.join('').length;
-                    if (matchesLength / contentLength > 0.3) {
-                        addIssue(issues, "Content Structure", rule);
-                    }
-                }
-            } else if (rule.checkType === "combined_percentage_check") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const matches = html.match(regex);
-                if (matches && matches.length > 0) {
-                    const contentLength = html.length;
-                    const matchesLength = matches.join('').length;
-                    if (matchesLength / contentLength > 0.5) {
-                        addIssue(issues, "Content Structure", rule);
-                    }
-                }
-            } else if (rule.checkType === "ratio_check") {
-                // Handle ratio checks if needed
-                console.log("Ratio check not implemented yet");
-            }
-        } catch (e) {
-            console.error(`Error in content structure rule ${rule.pattern}: ${e}`);
-        }
-    }
-
-    function checkInteractiveRule(rule, doc, issues) {
-        try {
-            if (rule.checkType === "regex") {
-                const regex = new RegExp(rule.pattern, 'gi');
-                const html = doc.outerHTML;
-                const matches = html.match(regex);
-                if (matches) {
-                    addIssue(issues, "Interactive", rule, matches.length);
-                }
-            }
-        } catch (e) {
-            console.error(`Error in interactive rule ${rule.pattern}: ${e}`);
-        }
-    }
-// Custom Watson SOP Structure Validation Function
-function validateWatsonSOPStructure(doc, issues) {
-    try {
-        // Check #WatsonSOPSource exists (standalone element, not a parent)
-        const watsonSource = doc.querySelector('#WatsonSOPSource');
-        if (!watsonSource) {
-            addIssue(issues, "Structure", {
-                pattern: "#WatsonSOPSource",
-                description: "Missing #WatsonSOPSource element",
-                suggestion: "Add <div id=\"WatsonSOPSource\"></div> as a standalone element",
-                required: true
-            });
-        }
-
-        // Check for WatsonSOPBody class (standalone, not inside WatsonSOPSource)
-        const watsonBody = doc.querySelector('.WatsonSOPBody');
+        // Fallback: search entire document
         if (!watsonBody) {
-            addIssue(issues, "Structure", {
-                pattern: ".WatsonSOPBody",
-                description: "Missing div.WatsonSOPBody",
-                suggestion: "Add <div class=\"WatsonSOPBody\"></div>",
-                required: true
-            });
-            return; // Cannot continue without WatsonSOPBody
+            watsonBody = document.querySelector('.WatsonSOPBody');
+        }
+        if (!watsonSource) {
+            watsonSource = document.querySelector('#WatsonSOPSource');
         }
 
-        // Check for col-TOC and col-body
+        console.log('Validator: WatsonSOPBody found:', !!watsonBody);
+        console.log('Validator: WatsonSOPSource found:', !!watsonSource);
+
+        // ===========================================
+        // STYLESHEET VALIDATION
+        // ===========================================
+        validateStylesheets(allContentContainers, watsonBody, issues);
+
+        // ===========================================
+        // WATSON SOP SOURCE VALIDATION
+        // ===========================================
+        validateWatsonSOPSource(watsonSource, allContentContainers, issues);
+
+        // ===========================================
+        // WATSON SOP BODY VALIDATION
+        // ===========================================
+        if (!watsonBody) {
+            // Check if incorrectly used as ID
+            let watsonBodyAsId = document.querySelector('#WatsonSOPBody');
+
+            if (watsonBodyAsId) {
+                issues.push({
+                    type: 'Structure',
+                    element: '#WatsonSOPBody',
+                    issue: 'WatsonSOPBody incorrectly used as ID instead of class',
+                    required: true,
+                    suggestion: 'Change <div id="WatsonSOPBody"> to <div class="WatsonSOPBody">',
+                    location: getElementLocation(watsonBodyAsId)
+                });
+                watsonBody = watsonBodyAsId;
+            } else {
+                issues.push({
+                    type: 'Structure',
+                    element: '.WatsonSOPBody',
+                    issue: 'Missing div.WatsonSOPBody',
+                    required: true,
+                    suggestion: 'Add <div class="WatsonSOPBody">SOP content</div>',
+                    location: ''
+                });
+            }
+        }
+
+        if (watsonBody) {
+            // Check for inline styles on WatsonSOPBody
+            if (watsonBody.hasAttribute('style')) {
+                issues.push({
+                    type: 'Structure',
+                    element: '.WatsonSOPBody',
+                    issue: 'WatsonSOPBody has inline styles',
+                    required: true,
+                    suggestion: 'Remove inline styles from WatsonSOPBody div',
+                    location: getElementLocation(watsonBody)
+                });
+            }
+
+            // Parse content for validation
+            const parser = new DOMParser();
+            const tempDoc = parser.parseFromString('<div>' + watsonBody.innerHTML + '</div>', 'text/html');
+            const parsedBody = tempDoc.body.firstChild;
+
+            // Remove WatsonByline elements
+            const bylineElements = parsedBody.querySelectorAll('div.WatsonByline');
+            bylineElements.forEach(el => el.remove());
+
+            console.log('Validator: Content parsed, length:', parsedBody.innerHTML.length);
+
+            // Run all validations
+            runAllValidations(parsedBody, issues);
+        }
+
+        // Output results
+        console.log('=== Validation Complete ===');
+        console.log('Total issues found:', issues.length);
+
+        if (issues.length > 0) {
+            exportToCSV(issues);
+        } else {
+            alert('No issues found in the content!');
+        }
+    }
+
+    function runAllValidations(doc, issues) {
+        // Watson SOP Structure
+        console.log('--- Watson SOP Structure Validations ---');
+        validateFloatingTOCStructure(doc, issues);
+        validateClassIdUsage(doc, issues);
+
+        // Watson Content Rules
+        console.log('--- Watson Content Rules ---');
+        validateSemanticTags(doc, issues);
+        validateHeadingHierarchy(doc, issues);
+        validateTableStructure(doc, issues);
+        validateListConsistency(doc, issues);
+        validateCallOuts(doc, issues);
+        validateUIElements(doc, issues);
+        validateBlurbs(doc, issues);
+        validateContentRatios(doc, issues);
+        validateOrderedListsStartingWithIf(doc, issues);
+        validateFloatingText(doc, issues);
+
+        // Standard HTML Checks
+        console.log('--- Standard HTML Checks ---');
+        validateStandardHTML(doc, issues);
+        validateDeprecatedAttributes(doc, issues);
+        validateInternalLinks(doc, issues);
+
+        // Accessibility Checks
+        console.log('--- Accessibility Checks ---');
+        validateAccessibility(doc, issues);
+
+        // Image and Link Checks
+        console.log('--- Image and Link Checks ---');
+        validateImages(doc, issues);
+        validateLinks(doc, issues);
+
+        // CSS Compliance Checks
+        console.log('--- CSS Compliance Checks ---');
+        validateCSSCompliance(doc, issues);
+
+        // Content Quality Checks
+        console.log('--- Content Quality Checks ---');
+        validateContentQuality(doc, issues);
+
+        // Inline Style Checks
+        console.log('--- Inline Style Checks ---');
+        validateInlineStyles(doc, issues);
+    }
+
+    // ===========================================
+    // STYLESHEET VALIDATION
+    // ===========================================
+
+    function validateStylesheets(containers, watsonBody, issues) {
+        const allApprovedStylesheets = [...CONFIG.coreStylesheets, ...CONFIG.tableStylesheets];
+        const linkedStylesheets = [];
+
+        // Collect stylesheets from all containers
+        containers.forEach(container => {
+            const linkTags = container.querySelectorAll('link[rel="stylesheet"]');
+            linkTags.forEach(link => {
+                const href = link.getAttribute('href');
+                if (href) {
+                    const filename = href.split('/').pop().split('?')[0].toLowerCase();
+                    if (!linkedStylesheets.some(s => s.filename === filename)) {
+                        linkedStylesheets.push({ filename, fullHref: href });
+                    }
+                }
+            });
+        });
+
+        // Also check document head
+        document.querySelectorAll('head link[rel="stylesheet"]').forEach(link => {
+            const href = link.getAttribute('href');
+            if (href) {
+                const filename = href.split('/').pop().split('?')[0].toLowerCase();
+                if (!linkedStylesheets.some(s => s.filename === filename)) {
+                    linkedStylesheets.push({ filename, fullHref: href });
+                }
+            }
+        });
+
+        console.log('Validator: Found', linkedStylesheets.length, 'stylesheets');
+
+        // Check for core stylesheet
+        const hasCoreStylesheet = linkedStylesheets.some(sheet =>
+            CONFIG.coreStylesheets.some(core => sheet.filename === core)
+        );
+
+        if (!hasCoreStylesheet) {
+            issues.push({
+                type: 'CSS',
+                element: '<link rel="stylesheet">',
+                issue: 'Missing required core stylesheet',
+                required: true,
+                suggestion: `Add at least one: ${CONFIG.coreStylesheets.map(s => s.replace('.css', '')).join(', ')}`,
+                location: ''
+            });
+        }
+
+        // Check for table stylesheet if tables exist
+        if (watsonBody) {
+            const tables = watsonBody.querySelectorAll('table');
+            if (tables.length > 0) {
+                const hasTableStylesheet = linkedStylesheets.some(sheet =>
+                    CONFIG.tableStylesheets.some(tableCSS => sheet.filename === tableCSS)
+                );
+
+                if (!hasTableStylesheet) {
+                    issues.push({
+                        type: 'CSS',
+                        element: 'Table stylesheet',
+                        issue: `Found ${tables.length} table(s) but no table stylesheet linked`,
+                        required: true,
+                        suggestion: `Add one: ${CONFIG.tableStylesheets.map(s => s.replace('.css', '')).join(', ')}`,
+                        location: ''
+                    });
+                }
+            }
+        }
+
+        // Flag non-approved stylesheets
+        containers.forEach(container => {
+            container.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+                const href = link.getAttribute('href');
+                if (href) {
+                    const filename = href.split('/').pop().split('?')[0].toLowerCase();
+                    const isApproved = allApprovedStylesheets.some(approved => filename === approved);
+                    const isSystem = CONFIG.systemStylesheets.some(sys =>
+                        filename.includes(sys) || href.toLowerCase().includes(sys)
+                    );
+
+                    if (!isApproved && !isSystem) {
+                        const alreadyFlagged = issues.some(i => i.element === `<link href="${filename}">`);
+                        if (!alreadyFlagged) {
+                            issues.push({
+                                type: 'CSS',
+                                element: `<link href="${filename}">`,
+                                issue: `Non-standardized stylesheet: ${filename}`,
+                                required: true,
+                                suggestion: 'Replace with an approved stylesheet',
+                                location: href
+                            });
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    // ===========================================
+    // WATSON SOP SOURCE VALIDATION
+    // ===========================================
+
+    function validateWatsonSOPSource(watsonSource, containers, issues) {
+        // Check for class instead of ID
+        let watsonSourceAsClass = null;
+        containers.forEach(container => {
+            const sourceAsClass = container.querySelector('.WatsonSOPSource');
+            if (sourceAsClass) watsonSourceAsClass = sourceAsClass;
+        });
+
+        if (!watsonSourceAsClass) {
+            watsonSourceAsClass = document.querySelector('.WatsonSOPSource');
+        }
+
+        if (watsonSourceAsClass && !watsonSource) {
+            issues.push({
+                type: 'Structure',
+                element: '.WatsonSOPSource',
+                issue: 'WatsonSOPSource incorrectly used as class instead of ID',
+                required: true,
+                suggestion: 'Change <div class="WatsonSOPSource"> to <div id="WatsonSOPSource">',
+                location: getElementLocation(watsonSourceAsClass)
+            });
+            watsonSource = watsonSourceAsClass;
+        } else if (!watsonSource && !watsonSourceAsClass) {
+            issues.push({
+                type: 'Structure',
+                element: '#WatsonSOPSource',
+                issue: 'Missing #WatsonSOPSource element',
+                required: true,
+                suggestion: 'Add <div id="WatsonSOPSource">version history link</div>',
+                location: ''
+            });
+            return;
+        }
+
+        if (watsonSource) {
+            // Check inline styles (allow display:none)
+            const styleAttr = watsonSource.getAttribute('style');
+            if (styleAttr) {
+                const normalizedStyle = styleAttr.toLowerCase().replace(/\s/g, '').replace(/;$/, '');
+                if (normalizedStyle !== 'display:none') {
+                    issues.push({
+                        type: 'Structure',
+                        element: '#WatsonSOPSource',
+                        issue: 'WatsonSOPSource has inline styles other than display:none',
+                        required: true,
+                        suggestion: 'Remove inline styles (display:none is acceptable)',
+                        location: getElementLocation(watsonSource)
+                    });
+                }
+            }
+
+            // Check URL ends with .htm
+            const content = watsonSource.textContent.trim();
+            if (content && content.toLowerCase().includes('.aspx')) {
+                issues.push({
+                    type: 'Structure',
+                    element: '#WatsonSOPSource',
+                    issue: 'Version history URL ends with .aspx instead of .htm',
+                    required: true,
+                    suggestion: 'Change URL from .aspx to .htm',
+                    location: content
+                });
+            }
+
+            // Check for comments
+            let hasComments = false;
+            watsonSource.childNodes.forEach(node => {
+                if (node.nodeType === 8) hasComments = true;
+            });
+
+            if (hasComments) {
+                issues.push({
+                    type: 'Structure',
+                    element: '#WatsonSOPSource',
+                    issue: 'WatsonSOPSource contains comments',
+                    required: true,
+                    suggestion: 'Remove comments from WatsonSOPSource',
+                    location: ''
+                });
+            }
+        }
+    }
+
+    // ===========================================
+    // FLOATING TOC STRUCTURE VALIDATION
+    // ===========================================
+
+    function validateFloatingTOCStructure(doc, issues) {
         const colTOC = doc.querySelector('#col-TOC');
         const colBody = doc.querySelector('#col-body');
+        const row = doc.querySelector('.row');
+        const toc = doc.querySelector('#toc');
 
-        // If either col-TOC or col-body exists, validate row structure
-        if (colTOC || colBody) {
-            const row = watsonBody.querySelector('.row');
+        if (!colTOC && !colBody && !row && !toc) {
+            return; // No TOC structure
+        }
 
-            if (!row) {
-                addIssue(issues, "Structure", {
-                    pattern: ".row",
-                    description: "Missing div.row when col-TOC or col-body present",
-                    suggestion: "Add <div class=\"row\"> inside div.WatsonSOPBody to contain #col-TOC and #col-body",
-                    required: true
+        // Check row is class not ID
+        const rowAsId = doc.querySelector('[id="row"]');
+        if (rowAsId && !rowAsId.classList.contains('row')) {
+            issues.push({
+                type: 'Structure',
+                element: '#row',
+                issue: 'row incorrectly used as ID instead of class',
+                required: true,
+                suggestion: 'Change <div id="row"> to <div class="row">',
+                location: getElementLocation(rowAsId)
+            });
+        }
+
+        if (!row && (colTOC || colBody)) {
+            issues.push({
+                type: 'Structure',
+                element: '.row',
+                issue: 'Missing div.row when col-TOC or col-body present',
+                required: true,
+                suggestion: 'Add <div class="row"> to contain #col-TOC and #col-body',
+                location: ''
+            });
+        }
+
+        if (row) {
+            if (colTOC && !row.contains(colTOC)) {
+                issues.push({
+                    type: 'Structure',
+                    element: '#col-TOC',
+                    issue: '#col-TOC must be inside div.row',
+                    required: true,
+                    suggestion: 'Move #col-TOC inside div.row',
+                    location: getElementLocation(colTOC)
                 });
-            } else {
-                // Verify col-TOC and col-body are children of row
-                if (colTOC && !row.contains(colTOC)) {
-                    addIssue(issues, "Structure", {
-                        pattern: "#col-TOC parent",
-                        description: "#col-TOC must be child of div.row",
-                        suggestion: "Move #col-TOC inside div.row",
-                        required: true
+            }
+
+            if (colBody && !row.contains(colBody)) {
+                issues.push({
+                    type: 'Structure',
+                    element: '#col-body',
+                    issue: '#col-body must be inside div.row',
+                    required: true,
+                    suggestion: 'Move #col-body inside div.row',
+                    location: getElementLocation(colBody)
+                });
+            }
+
+            if (colTOC) {
+                const sticky = colTOC.querySelector('.sticky');
+                if (!sticky) {
+                    issues.push({
+                        type: 'Structure',
+                        element: '.sticky',
+                        issue: 'Missing .sticky div inside #col-TOC',
+                        required: true,
+                        suggestion: 'Add <div class="sticky"> inside #col-TOC',
+                        location: getElementLocation(colTOC)
+                    });
+                } else if (toc && !sticky.contains(toc)) {
+                    issues.push({
+                        type: 'Structure',
+                        element: '#toc',
+                        issue: '#toc must be inside .sticky',
+                        required: true,
+                        suggestion: 'Move #toc inside .sticky div',
+                        location: getElementLocation(toc)
                     });
                 }
+            }
+        }
+    }
 
-                if (colBody && !row.contains(colBody)) {
-                    addIssue(issues, "Structure", {
-                        pattern: "#col-body parent",
-                        description: "#col-body must be child of div.row",
-                        suggestion: "Move #col-body inside div.row",
-                        required: true
+    // ===========================================
+    // CLASS/ID USAGE VALIDATION
+    // ===========================================
+
+    function validateClassIdUsage(doc, issues) {
+        // toc should be ID
+        doc.querySelectorAll('.toc').forEach(el => {
+            if (el.id !== 'toc') {
+                issues.push({
+                    type: 'Structure',
+                    element: '.toc',
+                    issue: 'toc incorrectly used as class instead of ID',
+                    required: true,
+                    suggestion: 'Change <div class="toc"> to <div id="toc">',
+                    location: getElementLocation(el)
+                });
+            }
+        });
+
+        // col-TOC should be ID
+        doc.querySelectorAll('.col-TOC').forEach(el => {
+            if (el.id !== 'col-TOC') {
+                issues.push({
+                    type: 'Structure',
+                    element: '.col-TOC',
+                    issue: 'col-TOC incorrectly used as class instead of ID',
+                    required: true,
+                    suggestion: 'Change <div class="col-TOC"> to <div id="col-TOC">',
+                    location: getElementLocation(el)
+                });
+            }
+        });
+
+        // col-body should be ID
+        doc.querySelectorAll('.col-body').forEach(el => {
+            if (el.id !== 'col-body') {
+                issues.push({
+                    type: 'Structure',
+                    element: '.col-body',
+                    issue: 'col-body incorrectly used as class instead of ID',
+                    required: true,
+                    suggestion: 'Change <div class="col-body"> to <div id="col-body">',
+                    location: getElementLocation(el)
+                });
+            }
+        });
+    }
+
+    // ===========================================
+    // SEMANTIC TAGS VALIDATION
+    // ===========================================
+
+    function validateSemanticTags(doc, issues) {
+        // Check for <b> tags
+        const bTags = doc.querySelectorAll('b');
+        if (bTags.length > 0) {
+            issues.push({
+                type: 'Structure',
+                element: '<b>',
+                issue: `Found ${bTags.length} <b> tag(s) - should use <strong>`,
+                required: true,
+                suggestion: 'Replace <b> with <strong> for semantic HTML',
+                location: getElementLocation(bTags[0])
+            });
+        }
+
+        // Check for <i> tags (exclude font icons)
+        const iTags = doc.querySelectorAll('i');
+        const nonIconITags = Array.from(iTags).filter(el => {
+            const className = el.className || '';
+            return !className.includes('fa') && !className.includes('icon');
+        });
+
+        if (nonIconITags.length > 0) {
+            issues.push({
+                type: 'Structure',
+                element: '<i>',
+                issue: `Found ${nonIconITags.length} <i> tag(s) - should use <em>`,
+                required: true,
+                suggestion: 'Replace <i> with <em> for semantic HTML (font icons excluded)',
+                location: getElementLocation(nonIconITags[0])
+            });
+        }
+    }
+
+    // ===========================================
+    // HEADING HIERARCHY VALIDATION
+    // ===========================================
+
+    function validateHeadingHierarchy(doc, issues) {
+        const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        let previousLevel = 0;
+
+        headings.forEach((heading) => {
+            const currentLevel = parseInt(heading.tagName.charAt(1));
+
+            if (previousLevel > 0 && currentLevel > previousLevel + 1) {
+                issues.push({
+                    type: 'Structure',
+                    element: heading.tagName,
+                    issue: `Heading hierarchy violated: h${previousLevel} to h${currentLevel} (skipped level)`,
+                    required: true,
+                    suggestion: `After h${previousLevel}, use h${previousLevel + 1}, not h${currentLevel}`,
+                    location: `${heading.tagName}: ${heading.textContent.substring(0, 50)}`
+                });
+            }
+
+            previousLevel = currentLevel;
+        });
+
+        // Check for multiple h1 tags
+        const h1Tags = doc.querySelectorAll('h1');
+        if (h1Tags.length > 1) {
+            issues.push({
+                type: 'Structure',
+                element: '<h1>',
+                issue: `Found ${h1Tags.length} <h1> tags - should only have one`,
+                required: true,
+                suggestion: 'Use only one <h1> per page',
+                location: getElementLocation(h1Tags[1])
+            });
+        }
+    }
+
+    // ===========================================
+    // TABLE STRUCTURE VALIDATION (ENHANCED)
+    // ===========================================
+
+    function validateTableStructure(doc, issues) {
+        const tables = doc.querySelectorAll('table');
+
+        tables.forEach((table, index) => {
+            const tableNum = index + 1;
+
+            // Check for table header
+            const thead = table.querySelector('thead');
+            const thElements = table.querySelectorAll('th');
+
+            if (!thead && thElements.length === 0) {
+                issues.push({
+                    type: 'Structure',
+                    element: `table[${tableNum}]`,
+                    issue: 'Table missing header (no <thead> or <th>)',
+                    required: true,
+                    suggestion: 'Add <thead> with <th> elements',
+                    location: getElementLocation(table)
+                });
+            }
+
+            // Check for deprecated attributes
+            const deprecatedTableAttrs = ['border', 'cellpadding', 'width', 'height', 'bgcolor', 'align'];
+
+            deprecatedTableAttrs.forEach(attr => {
+                if (table.hasAttribute(attr)) {
+                    issues.push({
+                        type: 'HTML',
+                        element: `table[${tableNum}]`,
+                        issue: `Table has deprecated "${attr}" attribute`,
+                        required: true,
+                        suggestion: `Remove ${attr} attribute and use CSS instead`,
+                        location: `${attr}="${table.getAttribute(attr)}"`
                     });
                 }
+            });
 
-                // Check order: col-TOC should come before col-body if both exist
-                if (colTOC && colBody) {
-                    const tocIndex = Array.from(row.children).indexOf(colTOC);
-                    const bodyIndex = Array.from(row.children).indexOf(colBody);
+            // Check for bgcolor on rows/cells
+            const bgcolorElements = table.querySelectorAll('[bgcolor]');
+            if (bgcolorElements.length > 0) {
+                issues.push({
+                    type: 'HTML',
+                    element: `table[${tableNum}]`,
+                    issue: `Found ${bgcolorElements.length} element(s) with deprecated "bgcolor"`,
+                    required: true,
+                    suggestion: 'Use CSS background-color instead',
+                    location: ''
+                });
+            }
 
-                    if (tocIndex > bodyIndex && tocIndex !== -1 && bodyIndex !== -1) {
-                        addIssue(issues, "Structure", {
-                            pattern: "#col-TOC order",
-                            description: "#col-TOC must appear before #col-body",
-                            suggestion: "Reorder elements: #col-TOC should come before #col-body in div.row",
-                            required: true
+            // Check for valign
+            const valignElements = table.querySelectorAll('[valign]');
+            if (valignElements.length > 0) {
+                issues.push({
+                    type: 'HTML',
+                    element: `table[${tableNum}]`,
+                    issue: `Found ${valignElements.length} element(s) with deprecated "valign"`,
+                    required: true,
+                    suggestion: 'Use CSS vertical-align instead',
+                    location: ''
+                });
+            }
+
+            // Check for nested tables
+            const nestedTables = table.querySelectorAll('table');
+            if (nestedTables.length > 0) {
+                issues.push({
+                    type: 'Structure',
+                    element: `table[${tableNum}]`,
+                    issue: `Table contains ${nestedTables.length} nested table(s)`,
+                    required: false,
+                    suggestion: 'Avoid nested tables - use CSS grid/flexbox',
+                    location: ''
+                });
+            }
+
+            // Check for inconsistent column count
+            const rows = table.querySelectorAll('tr');
+            if (rows.length > 1) {
+                const columnCounts = [];
+                rows.forEach((row, rowIndex) => {
+                    let colCount = 0;
+                    row.querySelectorAll('td, th').forEach(cell => {
+                        colCount += parseInt(cell.getAttribute('colspan')) || 1;
+                    });
+                    if (colCount > 0) {
+                        columnCounts.push({ row: rowIndex + 1, count: colCount });
+                    }
+                });
+
+                const uniqueCounts = [...new Set(columnCounts.map(c => c.count))];
+                if (uniqueCounts.length > 1) {
+                    const maxCount = Math.max(...uniqueCounts);
+                    const inconsistentRows = columnCounts.filter(c => c.count !== maxCount).map(c => c.row);
+
+                    if (inconsistentRows.length > 0 && inconsistentRows.length < rows.length * 0.5) {
+                        issues.push({
+                            type: 'Structure',
+                            element: `table[${tableNum}]`,
+                            issue: `Inconsistent column count in rows: ${inconsistentRows.slice(0, 5).join(', ')}`,
+                            required: false,
+                            suggestion: 'Ensure all rows have same column count (accounting for colspan). Merging cells can produce incosistent results for content comparison and users of AT.',
+                            location: ''
                         });
                     }
                 }
             }
 
-            // Verify row is child of WatsonSOPBody
-            if (row && !watsonBody.contains(row)) {
-                addIssue(issues, "Structure", {
-                    pattern: ".row parent",
-                    description: "div.row must be child of div.WatsonSOPBody",
-                    suggestion: "Move div.row inside div.WatsonSOPBody",
-                    required: true
+            // Check for empty rows
+            let emptyRowCount = 0;
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td, th');
+                const hasContent = Array.from(cells).some(cell => cell.textContent.trim().length > 0);
+                if (!hasContent && cells.length > 0) {
+                    emptyRowCount++;
+                }
+            });
+
+            if (emptyRowCount > 0) {
+                issues.push({
+                    type: 'Structure',
+                    element: `table[${tableNum}]`,
+                    issue: `Table has ${emptyRowCount} empty row(s)`,
+                    required: false,
+                    suggestion: 'Remove empty rows or add content',
+                    location: ''
                 });
             }
-        }
 
-        // Check for inline styles inside WatsonSOPBody
-        if (watsonBody) {
-            const elementsWithInlineStyles = watsonBody.querySelectorAll('[style]');
+            // Check for single-row/single-column tables
+            const dataRows = table.querySelectorAll('tbody tr, table > tr');
+            if (dataRows.length === 1 && !thead) {
+                issues.push({
+                    type: 'Structure',
+                    element: `table[${tableNum}]`,
+                    issue: 'Single-row table - might be misused for layout',
+                    required: false,
+                    suggestion: 'Consider if a table is appropriate here or if you can use different formatting',
+                    location: ''
+                });
+            }
 
-            if (elementsWithInlineStyles.length > 0) {
-                elementsWithInlineStyles.forEach((element) => {
-                    const tagName = element.tagName.toLowerCase();
-                    const styleValue = element.getAttribute('style');
+            if (rows.length > 0) {
+                const firstRowCells = rows[0].querySelectorAll('td, th');
+                let totalCols = 0;
+                firstRowCells.forEach(cell => {
+                    totalCols += parseInt(cell.getAttribute('colspan')) || 1;
+                });
 
-                    addIssue(issues, "CSS", {
-                        pattern: `${tagName}[style]`,
-                        description: `Inline style detected on ${tagName} element inside WatsonSOPBody`,
-                        suggestion: `Remove style="${styleValue}" and use externally linked standardized CSS instead`,
-                        required: true
+                if (totalCols === 1 && rows.length > 2) {
+                    issues.push({
+                        type: 'Structure',
+                        element: `table[${tableNum}]`,
+                        issue: 'Single-column table - might be misused for layout',
+                        required: false,
+                        suggestion: 'Consider using a list or different formats instead',
+                        location: ''
                     });
+                }
+
+                if (totalCols > 6) {
+                    issues.push({
+                        type: 'Structure',
+                        element: `table[${tableNum}]`,
+                        issue: `Table has ${totalCols} columns - may be hard to read`,
+                        required: false,
+                        suggestion: 'Consider splitting into multiple tables',
+                        location: ''
+                    });
+                }
+            }
+
+            // Check for excessive inline styles on cells
+            const cellsWithStyles = table.querySelectorAll('td[style], th[style]');
+            if (cellsWithStyles.length > 10) {
+                issues.push({
+                    type: 'CSS Compliance',
+                    element: `table[${tableNum}]`,
+                    issue: `Table has ${cellsWithStyles.length} cells with inline styles`,
+                    required: false,
+                    suggestion: 'Use CSS classes instead of cell formatting for consistency',
+                    location: ''
+                });
+            }
+
+            // Check for consistent <p> tag usage
+            const cells = table.querySelectorAll('td');
+            if (cells.length > 1) {
+                const cellsWithP = Array.from(cells).filter(cell => cell.querySelector('p'));
+                const cellsWithoutP = Array.from(cells).filter(cell =>
+                    !cell.querySelector('p') && cell.textContent.trim().length > 0
+                );
+
+                if (cellsWithP.length > 0 && cellsWithoutP.length > 0) {
+                    const total = cellsWithP.length + cellsWithoutP.length;
+                    if (Math.min(cellsWithP.length, cellsWithoutP.length) > total * 0.2) {
+                        issues.push({
+                            type: 'Structure',
+                            element: `table[${tableNum}]`,
+                            issue: `Inconsistent <p> usage (${cellsWithP.length} with, ${cellsWithoutP.length} without)`,
+                            required: false,
+                            suggestion: 'Be consistent with <p> tags in cells',
+                            location: ''
+                        });
+                    }
+                }
+            }
+        });
+    }
+
+    // ===========================================
+    // LIST CONSISTENCY VALIDATION
+    // ===========================================
+
+    function validateListConsistency(doc, issues) {
+        const lists = doc.querySelectorAll('ol, ul');
+
+        lists.forEach((list, index) => {
+            const listItems = list.querySelectorAll(':scope > li');
+            if (listItems.length < 2) return;
+
+            let itemsWithP = 0;
+            let itemsWithoutP = 0;
+
+            listItems.forEach(li => {
+                if (li.querySelector(':scope > p')) {
+                    itemsWithP++;
+                } else if (li.textContent.trim().length > 0) {
+                    itemsWithoutP++;
+                }
+            });
+
+            if (itemsWithP > 0 && itemsWithoutP > 0) {
+                const total = itemsWithP + itemsWithoutP;
+                if (Math.min(itemsWithP, itemsWithoutP) > total * 0.2) {
+                    issues.push({
+                        type: 'Structure',
+                        element: `${list.tagName.toLowerCase()}[${index + 1}]`,
+                        issue: `Inconsistent <p> usage (${itemsWithP} with, ${itemsWithoutP} without)`,
+                        required: false,
+                        suggestion: 'Be consistent with <p> tags in list items',
+                        location: ''
+                    });
+                }
+            }
+        });
+    }
+
+    // ===========================================
+    // CALLOUT VALIDATION
+    // ===========================================
+
+    function validateCallOuts(doc, issues) {
+        const selector = CONFIG.calloutClasses.map(c => `div.${c}`).join(', ');
+        const callouts = doc.querySelectorAll(selector);
+
+        callouts.forEach((callout) => {
+            const innerHTML = callout.innerHTML.trim();
+            const startsWithStrong = /^<strong/i.test(innerHTML);
+
+            if (!startsWithStrong) {
+                const className = Array.from(callout.classList).find(c => CONFIG.calloutClasses.includes(c));
+                issues.push({
+                    type: 'Structure',
+                    element: `div.${className}`,
+                    issue: 'Call-out may be missing intro text in <strong>',
+                    required: true,
+                    suggestion: `It looks like your call-out is missing an introductory text or it is different from what was intended. If so, add <strong>${className.charAt(0).toUpperCase() + className.slice(1)}:</strong> at the beginning.`,
+                    location: getElementLocation(callout)
+                });
+            }
+        });
+    }
+
+    // ===========================================
+    // UI ELEMENTS VALIDATION
+    // ===========================================
+
+    function validateUIElements(doc, issues) {
+        const html = doc.innerHTML;
+        const uiPatternRegex = /(Click|Select|Choose|Press|Navigate to|Open|Tap|Double-click)\s+<strong(?![^>]*class\s*=\s*["'][^"']*\bui\b[^"']*["'])[^>]*>([^<]+)<\/strong>/gi;
+
+        let match;
+        const foundIssues = new Set();
+        let count = 0;
+
+        while ((match = uiPatternRegex.exec(html)) !== null && count < 10) {
+            const elementName = match[2].trim();
+            if (!foundIssues.has(elementName) && elementName.length < 50 && !elementName.includes('_')) {
+                foundIssues.add(elementName);
+                count++;
+                issues.push({
+                    type: 'Structure',
+                    element: '<strong>',
+                    issue: `UI element "${elementName}" should use <strong class="ui">`,
+                    required: true,
+                    suggestion: `If this is indeed a UI element that user interacts with, change to <strong class="ui">${elementName}</strong>`,
+                    location: `"${match[1]} ${elementName}"`
+                });
+            }
+        }
+    }
+
+    // ===========================================
+    // BLURB VALIDATION
+    // ===========================================
+
+    function validateBlurbs(doc, issues) {
+        const html = doc.innerHTML;
+        const blurbPattern = /<strong(?![^>]*class\s*=\s*["'][^"']*\bblurb\b[^"']*["'])[^>]*>([a-zA-Z][a-zA-Z0-9]*_[a-zA-Z0-9_]+)<\/strong>/gi;
+
+        let match;
+        const foundBlurbs = new Set();
+
+        while ((match = blurbPattern.exec(html)) !== null) {
+            const blurbName = match[1].trim();
+            if (!foundBlurbs.has(blurbName)) {
+                foundBlurbs.add(blurbName);
+                issues.push({
+                    type: 'Structure',
+                    element: '<strong>',
+                    issue: `Blurb "${blurbName}" should use <strong class="blurb">`,
+                    required: true,
+                    suggestion: `This looks like a blurb title. If so, change to <strong class="blurb">${blurbName}</strong>.`,
+                    location: `Blurb: ${blurbName}`
                 });
             }
         }
 
-        // Check for approved CSS files
-        const approvedCssFiles = [
-            "Watson-SOP-standard.css",
-            "Interactive_features.css",
-            "Buttons.css",
-            "Function_menu.css",
-            "Grey_2_tone.css",
-            "WhiteTable.css",
-            "KeyTermsTable.css",
-            "DefinitionTable.css"
+        // Check <b> tags with blurb patterns
+        const bBlurbPattern = /<b>([a-zA-Z][a-zA-Z0-9]*_[a-zA-Z0-9_]+)<\/b>/gi;
+        while ((match = bBlurbPattern.exec(html)) !== null) {
+            const blurbName = match[1].trim();
+            if (!foundBlurbs.has(blurbName)) {
+                foundBlurbs.add(blurbName);
+                issues.push({
+                    type: 'Structure',
+                    element: '<b>',
+                    issue: `Blurb "${blurbName}" uses <b> instead of <strong class="blurb">`,
+                    required: true,
+                    suggestion: `This looks like a blurb title. If so, change to <strong class="blurb">${blurbName}</strong>.`,
+                    location: `Blurb: ${blurbName}`
+                });
+            }
+        }
+    }
+
+    // ===========================================
+    // CONTENT RATIOS VALIDATION
+    // ===========================================
+
+    function validateContentRatios(doc, issues) {
+        const totalText = doc.textContent.length;
+        if (totalText < 500) return;
+
+        // Table ratio
+        const tables = doc.querySelectorAll('table');
+        let tableTextLength = 0;
+        tables.forEach(table => tableTextLength += table.textContent.length);
+
+        const tableRatio = tableTextLength / totalText;
+        if (tableRatio > 0.3) {
+            issues.push({
+                type: 'Structure',
+                element: 'tables',
+                issue: `More than 30% content in tables (${Math.round(tableRatio * 100)}%)`,
+                required: false,
+                suggestion: 'Consider reducing table usage',
+                location: ''
+            });
+        }
+
+        // Callout ratio
+        const selector = CONFIG.calloutClasses.map(c => `div.${c}`).join(', ');
+        const callouts = doc.querySelectorAll(selector);
+        let calloutTextLength = 0;
+        callouts.forEach(callout => calloutTextLength += callout.textContent.length);
+
+        const calloutRatio = calloutTextLength / totalText;
+        if (calloutRatio > 0.3) {
+            issues.push({
+                type: 'Structure',
+                element: 'callouts',
+                issue: `More than 30% content in call-outs (${Math.round(calloutRatio * 100)}%)`,
+                required: false,
+                suggestion: 'Consider reducing call-out usage',
+                location: ''
+            });
+        }
+
+        // Consecutive callouts
+        if (callouts.length > 2) {
+            let maxConsecutive = 1;
+            let currentConsecutive = 1;
+
+            for (let i = 1; i < callouts.length; i++) {
+                const prev = callouts[i - 1];
+                const curr = callouts[i];
+
+                if (prev.parentElement === curr.parentElement) {
+                    let sibling = prev.nextElementSibling;
+                    let foundContent = false;
+
+                    while (sibling && sibling !== curr) {
+                        if (sibling.textContent.trim().length > 20) {
+                            foundContent = true;
+                            break;
+                        }
+                        sibling = sibling.nextElementSibling;
+                    }
+
+                    if (!foundContent) {
+                        currentConsecutive++;
+                        maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+                    } else {
+                        currentConsecutive = 1;
+                    }
+                } else {
+                    currentConsecutive = 1;
+                }
+            }
+
+            if (maxConsecutive > 2) {
+                issues.push({
+                    type: 'Structure',
+                    element: 'callouts',
+                    issue: `Found ${maxConsecutive} consecutive call-outs`,
+                    required: false,
+                    suggestion: 'Avoid more than 2 consecutive call-outs',
+                    location: ''
+                });
+            }
+        }
+    }
+
+    // ===========================================
+    // ORDERED LISTS STARTING WITH IF
+    // ===========================================
+
+    function validateOrderedListsStartingWithIf(doc, issues) {
+        const orderedLists = doc.querySelectorAll('ol');
+
+        orderedLists.forEach((ol, index) => {
+            const listItems = ol.querySelectorAll(':scope > li');
+            let ifCount = 0;
+
+            listItems.forEach(li => {
+                const text = li.textContent.trim().toLowerCase();
+                if (text.startsWith('if ') || text.startsWith('if:') || text.startsWith('if,')) {
+                    ifCount++;
+                }
+            });
+
+            if (ifCount >= 2) {
+                issues.push({
+                    type: 'Structure',
+                    element: `ol[${index + 1}]`,
+                    issue: `Ordered list has ${ifCount} items starting with "If"`,
+                    required: false,
+                    suggestion: 'Consider restructuring conditional steps',
+                    location: ''
+                });
+            }
+        });
+    }
+
+    // ===========================================
+    // FLOATING TEXT VALIDATION
+    // ===========================================
+
+    function validateFloatingText(doc, issues) {
+        const containers = [
+            { element: doc, name: 'WatsonSOPBody' },
+            { element: doc.querySelector('#col-body'), name: '#col-body' }
         ];
 
-        // Find all <link> tags with rel="stylesheet"
-        const linkTags = doc.querySelectorAll('link[rel="stylesheet"]');
+        containers.forEach(({ element, name }) => {
+            if (!element) return;
 
-        linkTags.forEach(link => {
+            Array.from(element.childNodes).forEach(node => {
+                if (node.nodeType === 3) {
+                    const text = node.textContent.trim();
+                    if (text.length > 30) {
+                        issues.push({
+                            type: 'Structure',
+                            element: 'floating text',
+                            issue: `Unwrapped text in ${name}`,
+                            required: true,
+                            suggestion: 'Wrap text in <p>, <div>, etc.',
+                            location: `"${text.substring(0, 50)}..."`
+                        });
+                    }
+                }
+            });
+        });
+    }
+
+    // ===========================================
+    // STANDARD HTML VALIDATION
+    // ===========================================
+
+    function validateStandardHTML(doc, issues) {
+        // Deprecated tags
+        const deprecatedTags = ['font', 'center', 'marquee', 'blink', 'strike'];
+
+        deprecatedTags.forEach(tag => {
+            const elements = doc.querySelectorAll(tag);
+            if (elements.length > 0) {
+                issues.push({
+                    type: 'HTML',
+                    element: `<${tag}>`,
+                    issue: `Found ${elements.length} deprecated <${tag}> tag(s)`,
+                    required: true,
+                    suggestion: 'Use modern HTML/CSS alternatives',
+                    location: getElementLocation(elements[0])
+                });
+            }
+        });
+
+        // Empty lists
+        doc.querySelectorAll('ul, ol').forEach(list => {
+            if (list.querySelectorAll('li').length === 0) {
+                issues.push({
+                    type: 'HTML',
+                    element: `<${list.tagName.toLowerCase()}>`,
+                    issue: 'Empty list detected',
+                    required: true,
+                    suggestion: 'Remove empty list or add items',
+                    location: getElementLocation(list)
+                });
+            }
+        });
+
+        // Multiple <br> tags
+        const html = doc.innerHTML;
+        const brMatches = html.match(/<br\s*\/?>\s*<br\s*\/?>/gi);
+        if (brMatches && brMatches.length > 3) {
+            issues.push({
+                type: 'HTML',
+                element: '<br><br>',
+                issue: `Found ${brMatches.length} consecutive <br> pairs`,
+                required: false,
+                suggestion: 'Use CSS margins/padding instead',
+                location: ''
+            });
+        }
+
+        // Multiple <hr> tags
+        const hrMatches = html.match(/<hr\s*\/?>\s*<hr\s*\/?>/gi);
+        if (hrMatches && hrMatches.length > 3) {
+            issues.push({
+                type: 'HTML',
+                element: '<hr><hr>',
+                issue: `Found ${hrMatches.length} consecutive <hr> pairs`,
+                required: false,
+                suggestion: 'Use consistent singular line breaks (hr)',
+                location: ''
+            });
+        }
+
+        // MS Office markup
+        if (/mso-[a-zA-Z-]+:/gi.test(html)) {
+            issues.push({
+                type: 'HTML',
+                element: 'mso-* styles',
+                issue: 'Microsoft Office styles detected',
+                required: true,
+                suggestion: 'Paste as plain text to remove Office formatting',
+                location: ''
+            });
+        }
+
+        // Duplicate IDs
+        const idCounts = {};
+        doc.querySelectorAll('[id]').forEach(el => {
+            const id = el.id;
+            if (id) idCounts[id] = (idCounts[id] || 0) + 1;
+        });
+
+        Object.keys(idCounts).forEach(id => {
+            if (idCounts[id] > 1) {
+                issues.push({
+                    type: 'HTML',
+                    element: `id="${id}"`,
+                    issue: `Duplicate ID: "${id}" appears ${idCounts[id]} times`,
+                    required: true,
+                    suggestion: 'IDs must be unique',
+                    location: ''
+                });
+            }
+        });
+    }
+
+    // ===========================================
+    // DEPRECATED ATTRIBUTES VALIDATION
+    // ===========================================
+
+    function validateDeprecatedAttributes(doc, issues) {
+        CONFIG.deprecatedAttributes.forEach(({ attr, suggestion }) => {
+            const foundElements = doc.querySelectorAll(`[${attr}]`);
+            if (foundElements.length > 0) {
+                issues.push({
+                    type: 'HTML',
+                    element: `[${attr}]`,
+                    issue: `Found ${foundElements.length} element(s) with deprecated "${attr}"`,
+                    required: true,
+                    suggestion: suggestion,
+                    location: getElementLocation(foundElements[0])
+                });
+            }
+        });
+    }
+
+    // ===========================================
+    // INTERNAL LINKS VALIDATION
+    // ===========================================
+
+    function validateInternalLinks(doc, issues) {
+        const internalLinks = doc.querySelectorAll('a[href^="#"]');
+        const brokenLinks = [];
+
+        internalLinks.forEach(link => {
             const href = link.getAttribute('href');
-            if (href) {
-                // Extract just the filename from the href
-                const filename = href.split('/').pop().split('?');
-
-                // Check if this CSS file is in the approved list
-                if (!approvedCssFiles.includes(filename)) {
-                    addIssue(issues, "CSS", {
-                        pattern: `link[href*="${filename}"]`,
-                        description: `Unapproved CSS file linked: ${filename}`,
-                        suggestion: `Replace "${filename}" with one of the approved standardized CSS files: ${approvedCssFiles.join(', ')}`,
-                        required: true
+            if (href && href !== '#') {
+                const targetId = href.substring(1);
+                const target = doc.querySelector(`[id="${targetId}"], [name="${targetId}"]`);
+                if (!target) {
+                    brokenLinks.push({
+                        href: href,
+                        text: link.textContent.trim().substring(0, 30)
                     });
                 }
             }
         });
 
-    } catch (e) {
-        console.error('Error in Watson SOP structure validation:', e);
+        if (brokenLinks.length > 0) {
+            const display = brokenLinks.slice(0, 5);
+            issues.push({
+                type: 'HTML',
+                element: '<a href="#">',
+                issue: `Found ${brokenLinks.length} broken internal link(s)`,
+                required: true,
+                suggestion: 'Ensure links point to existing id/name attributes',
+                location: display.map(l => `${l.href}`).join(', ')
+            });
+        }
     }
-}
 
-    function addIssue(issues, type, rule, count = null) {
-        let description = rule.description;
-        if (count !== null) {
-            description = `Found ${count} instances of ${description}`;
+    // ===========================================
+    // ACCESSIBILITY VALIDATION
+    // ===========================================
+
+    function validateAccessibility(doc, issues) {
+        // Images without alt
+        const imagesNoAlt = doc.querySelectorAll('img:not([alt])');
+        if (imagesNoAlt.length > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<img>',
+                issue: `Found ${imagesNoAlt.length} image(s) missing alt attribute`,
+                required: true,
+                suggestion: 'Add descriptive alt text',
+                location: getElementLocation(imagesNoAlt[0])
+            });
         }
 
-        // Add location information if possible
-        let location = '';
-        try {
-            const regex = new RegExp(rule.pattern, 'gi');
-            const match = regex.exec(document.documentElement.outerHTML);
-            if (match) {
-                const context = match.input.substr(Math.max(0, match.index - 100), 500);
-                location = `...${context}...`;
+        // Images with empty alt
+        const imagesEmptyAlt = doc.querySelectorAll('img[alt=""]');
+        if (imagesEmptyAlt.length > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<img alt="">',
+                issue: `Found ${imagesEmptyAlt.length} image(s) with empty alt`,
+                required: false,
+                suggestion: 'Verify these are decorative images',
+                location: ''
+            });
+        }
+
+        // iframes without title
+        const iframesNoTitle = doc.querySelectorAll('iframe:not([title])');
+        if (iframesNoTitle.length > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<iframe>',
+                issue: `Found ${iframesNoTitle.length} iframe(s) missing title`,
+                required: true,
+                suggestion: 'Add title attribute',
+                location: ''
+            });
+        }
+
+        // Videos without controls
+        const videosNoControls = doc.querySelectorAll('video:not([controls])');
+        if (videosNoControls.length > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<video>',
+                issue: `Found ${videosNoControls.length} video(s) missing controls`,
+                required: true,
+                suggestion: 'Add controls attribute',
+                location: ''
+            });
+        }
+
+        // Audio without controls
+        const audioNoControls = doc.querySelectorAll('audio:not([controls])');
+        if (audioNoControls.length > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<audio>',
+                issue: `Found ${audioNoControls.length} audio element(s) missing controls`,
+                required: true,
+                suggestion: 'Add controls attribute',
+                location: ''
+            });
+        }
+
+        // Links without href (exclude bookmarks with name/id)
+        const linksNoHref = doc.querySelectorAll('a:not([href]):not([name]):not([id])');
+        if (linksNoHref.length > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<a>',
+                issue: `Found ${linksNoHref.length} anchor(s) missing href (not bookmarks)`,
+                required: true,
+                suggestion: 'Add href or use <button>',
+                location: ''
+            });
+        }
+
+        // Table headers without scope
+        const thNoScope = doc.querySelectorAll('th:not([scope])');
+        if (thNoScope.length > 5) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<th>',
+                issue: `Found ${thNoScope.length} table header(s) missing scope`,
+                required: false,
+                suggestion: 'Add scope="col" or scope="row"',
+                location: ''
+            });
+        }
+
+        // Buttons without accessible name
+        let emptyButtons = 0;
+        doc.querySelectorAll('button').forEach(button => {
+            const hasText = button.textContent.trim();
+            const hasAriaLabel = button.hasAttribute('aria-label');
+            const hasTitle = button.hasAttribute('title');
+            if (!hasText && !hasAriaLabel && !hasTitle) {
+                emptyButtons++;
             }
-        } catch (e) {
-            console.log('Could not determine location for issue');
+        });
+
+        if (emptyButtons > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<button>',
+                issue: `Found ${emptyButtons} button(s) without accessible name`,
+                required: true,
+                suggestion: 'Add text, aria-label, or title',
+                location: ''
+            });
         }
 
-        issues.push({
-            type: type,
-            element: rule.pattern,
-            issue: description,
-            required: rule.required,
-            suggestion: rule.suggestion,
-            location: location
+        // Generic link text
+        const genericTexts = ['click here', 'here', 'read more', 'learn more', 'more', 'link'];
+        let genericLinkCount = 0;
+
+        doc.querySelectorAll('a[href]').forEach(link => {
+            const text = link.textContent.trim().toLowerCase();
+            if (genericTexts.includes(text)) {
+                genericLinkCount++;
+            }
         });
+
+        if (genericLinkCount > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<a>',
+                issue: `Found ${genericLinkCount} link(s) with generic text`,
+                required: false,
+                suggestion: 'Use descriptive link text',
+                location: ''
+            });
+        }
+    }
+
+    // ===========================================
+    // IMAGE VALIDATION
+    // ===========================================
+
+    function validateImages(doc, issues) {
+        const images = doc.querySelectorAll('img');
+        let imagesWithInlineBorder = 0;
+        let imagesWithInlineSize = 0;
+        let imagesWithBorderAttr = 0;
+        let imagesWithAlignAttr = 0;
+
+        images.forEach(img => {
+            const style = img.getAttribute('style') || '';
+
+            if (style.includes('border')) imagesWithInlineBorder++;
+            if (style.includes('width') || style.includes('height')) imagesWithInlineSize++;
+            if (img.hasAttribute('border')) imagesWithBorderAttr++;
+            if (img.hasAttribute('align')) imagesWithAlignAttr++;
+        });
+
+        if (imagesWithInlineBorder > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<img style="border">',
+                issue: `Found ${imagesWithInlineBorder} image(s) with inline border`,
+                required: false,
+                suggestion: 'Use img.no_border class or standard CSS',
+                location: ''
+            });
+        }
+
+        if (imagesWithInlineSize > 3) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<img style="width/height">',
+                issue: `Found ${imagesWithInlineSize} image(s) with inline sizing`,
+                required: false,
+                suggestion: 'Use image classes (tiny, icon, flag, flowchart)',
+                location: ''
+            });
+        }
+
+        if (imagesWithBorderAttr > 0) {
+            issues.push({
+                type: 'HTML',
+                element: '<img border="">',
+                issue: `Found ${imagesWithBorderAttr} image(s) with deprecated border attr`,
+                required: true,
+                suggestion: 'Remove border attribute, use CSS',
+                location: ''
+            });
+        }
+
+        if (imagesWithAlignAttr > 0) {
+            issues.push({
+                type: 'HTML',
+                element: '<img align="">',
+                issue: `Found ${imagesWithAlignAttr} image(s) with deprecated align attr`,
+                required: true,
+                suggestion: 'Remove align attribute, use CSS',
+                location: ''
+            });
+        }
+    }
+
+    // ===========================================
+    // LINK VALIDATION
+    // ===========================================
+
+    function validateLinks(doc, issues) {
+        const links = doc.querySelectorAll('a[href]');
+        let aspxLinks = 0;
+        let httpLinks = 0;
+        let emptyTextLinks = 0;
+
+        links.forEach(link => {
+            const href = link.getAttribute('href');
+            const text = link.textContent.trim();
+
+            if (href && href.toLowerCase().includes('.aspx')) {
+                aspxLinks++;
+            }
+
+            if (href && href.startsWith('http://') && !href.includes('localhost')) {
+                httpLinks++;
+            }
+
+            if (!text && !link.querySelector('img') && !link.hasAttribute('aria-label') &&
+                !link.hasAttribute('name') && !link.hasAttribute('id')) {
+                emptyTextLinks++;
+            }
+        });
+
+        if (httpLinks > 0) {
+            issues.push({
+                type: 'Security',
+                element: '<a href="http://">',
+                issue: `Found ${httpLinks} link(s) using insecure http://`,
+                required: true,
+                suggestion: 'Update to https://',
+                location: ''
+            });
+        }
+
+        if (emptyTextLinks > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: '<a>',
+                issue: `Found ${emptyTextLinks} link(s) with no text content`,
+                required: true,
+                suggestion: 'Add descriptive text or aria-label',
+                location: ''
+            });
+        }
+    }
+
+    // ===========================================
+    // CSS COMPLIANCE VALIDATION
+    // ===========================================
+
+    function validateCSSCompliance(doc, issues) {
+        validateButtonUsage(doc, issues);
+        validateCalloutCSS(doc, issues);
+        validateColoredMargins(doc, issues);
+        validateInteractiveElements(doc, issues);
+        validateTypography(doc, issues);
+        validateListClasses(doc, issues);
+        validateLayoutContainers(doc, issues);
+        validateEmphasisBoxes(doc, issues);
+        validateSemanticSpans(doc, issues);
+    }
+
+    function validateButtonUsage(doc, issues) {
+        const buttons = doc.querySelectorAll('button');
+        let buttonsWithoutClass = 0;
+        let buttonsWithInlineStyles = 0;
+
+        buttons.forEach(button => {
+            const classes = button.className.split(' ').filter(c => c.trim());
+            const hasStandardClass = classes.some(cls => CONFIG.buttonClasses.includes(cls));
+
+            if (!hasStandardClass && classes.length === 0) {
+                buttonsWithoutClass++;
+            }
+
+            const style = button.getAttribute('style') || '';
+            if (style.includes('background') || style.includes('color') ||
+                style.includes('border') || style.includes('font')) {
+                buttonsWithInlineStyles++;
+            }
+        });
+
+        if (buttonsWithoutClass > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<button>',
+                issue: `Found ${buttonsWithoutClass} button(s) without standard class`,
+                required: false,
+                suggestion: 'Use: button--1/2/3/4, animated_button_red/green, update-button, etc.',
+                location: ''
+            });
+        }
+
+        if (buttonsWithInlineStyles > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<button style="">',
+                issue: `Found ${buttonsWithInlineStyles} button(s) with inline styles`,
+                required: true,
+                suggestion: 'Use standard button classes from Buttons.css',
+                location: ''
+            });
+        }
+    }
+
+    function validateCalloutCSS(doc, issues) {
+        // Check for non-standard callout divs
+        const allDivs = doc.querySelectorAll('div');
+        let nonStandardCallouts = 0;
+
+        allDivs.forEach(div => {
+            const style = (div.getAttribute('style') || '').toLowerCase();
+            if ((style.includes('background-color') || style.includes('background:')) &&
+                (style.includes('border') || style.includes('padding'))) {
+                const hasStandardClass = CONFIG.calloutClasses.some(cls => div.classList.contains(cls));
+                if (!hasStandardClass) {
+                    nonStandardCallouts++;
+                }
+            }
+        });
+
+        if (nonStandardCallouts > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<div style="background...">',
+                issue: `Found ${nonStandardCallouts} non-standard callout div(s)`,
+                required: true,
+                suggestion: `Use standard classes: ${CONFIG.calloutClasses.join(', ')}`,
+                location: ''
+            });
+        }
+
+        // Check callouts for overriding styles
+        const selector = CONFIG.calloutClasses.map(c => `div.${c}`).join(', ');
+        doc.querySelectorAll(selector).forEach(callout => {
+            const style = callout.getAttribute('style') || '';
+            if (style.includes('background') || style.includes('border-color')) {
+                issues.push({
+                    type: 'CSS Compliance',
+                    element: `div.${callout.className.split(' ')[0]}`,
+                    issue: 'Callout has inline styles overriding standard CSS',
+                    required: true,
+                    suggestion: 'Remove inline background/border styles',
+                    location: getElementLocation(callout)
+                });
+            }
+        });
+    }
+
+    function validateColoredMargins(doc, issues) {
+        // Check for inline border-left styles
+        const divsWithBorderLeft = doc.querySelectorAll('div[style*="border-left"]');
+        let nonStandardBorderLeft = 0;
+
+        divsWithBorderLeft.forEach(div => {
+            const hasStandardClass = CONFIG.coloredMarginClasses.some(color => div.classList.contains(color));
+            if (!hasStandardClass) {
+                nonStandardBorderLeft++;
+            }
+        });
+
+        if (nonStandardBorderLeft > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<div style="border-left...">',
+                issue: `Found ${nonStandardBorderLeft} div(s) with inline border-left`,
+                required: true,
+                suggestion: `Use standard classes: ${CONFIG.coloredMarginClasses.join(', ')}`,
+                location: ''
+            });
+        }
+    }
+
+    function validateInteractiveElements(doc, issues) {
+        // Collapsible sections
+        const collapsibles = doc.querySelectorAll('.collapsible, .collapsible-hide');
+
+        collapsibles.forEach(collapsible => {
+            if (collapsible.tagName !== 'BUTTON' && !collapsible.tagName.match(/^H[1-6]$/)) {
+                issues.push({
+                    type: 'CSS Compliance',
+                    element: '.collapsible',
+                    issue: `Collapsible is <${collapsible.tagName.toLowerCase()}> instead of <button> or heading`,
+                    required: false,
+                    suggestion: 'Use <button class="collapsible"> or <h4 class="collapsible">',
+                    location: ''
+                });
+            }
+
+            if (!collapsible.hasAttribute('aria-expanded')) {
+                issues.push({
+                    type: 'Accessibility',
+                    element: '.collapsible',
+                    issue: 'Collapsible missing aria-expanded',
+                    required: false,
+                    suggestion: 'Add aria-expanded="false"',
+                    location: ''
+                });
+            }
+
+            const nextSibling = collapsible.nextElementSibling;
+            if (!nextSibling || !nextSibling.classList.contains('collapsed')) {
+                issues.push({
+                    type: 'Structure',
+                    element: '.collapsible',
+                    issue: 'Collapsible not followed by .collapsed div',
+                    required: true,
+                    suggestion: 'Add <div class="collapsed">content</div> after',
+                    location: ''
+                });
+            }
+        });
+
+        // Flip cards
+        doc.querySelectorAll('.flip-card').forEach(card => {
+            if (!card.querySelector('.flip-card-inner')) {
+                issues.push({
+                    type: 'Structure',
+                    element: '.flip-card',
+                    issue: 'Flip card missing .flip-card-inner',
+                    required: true,
+                    suggestion: 'Add <div class="flip-card-inner">',
+                    location: ''
+                });
+            }
+
+            if (!card.querySelector('.flip-card-front') || !card.querySelector('.flip-card-back')) {
+                issues.push({
+                    type: 'Structure',
+                    element: '.flip-card',
+                    issue: 'Flip card missing front or back',
+                    required: true,
+                    suggestion: 'Add .flip-card-front and .flip-card-back',
+                    location: ''
+                });
+            }
+
+            if (!card.hasAttribute('tabindex')) {
+                issues.push({
+                    type: 'Accessibility',
+                    element: '.flip-card',
+                    issue: 'Flip card missing tabindex',
+                    required: false,
+                    suggestion: 'Add tabindex="0"',
+                    location: ''
+                });
+            }
+        });
+
+        // Tabs
+        doc.querySelectorAll('.tab').forEach(tab => {
+            const buttons = tab.querySelectorAll('button');
+            buttons.forEach(button => {
+                if (!button.classList.contains('tablinks')) {
+                    issues.push({
+                        type: 'CSS Compliance',
+                        element: '.tab button',
+                        issue: 'Tab button missing .tablinks class',
+                        required: false,
+                        suggestion: 'Add class="tablinks"',
+                        location: ''
+                    });
+                }
+            });
+        });
+
+        // Dropdowns
+        doc.querySelectorAll('.dropdown').forEach(dropdown => {
+            if (!dropdown.querySelector('.dropdown-content')) {
+                issues.push({
+                    type: 'Structure',
+                    element: '.dropdown',
+                    issue: 'Dropdown missing .dropdown-content',
+                    required: true,
+                    suggestion: 'Add <div class="dropdown-content">',
+                    location: ''
+                });
+            }
+        });
+    }
+
+    function validateTypography(doc, issues) {
+        const html = doc.innerHTML;
+
+        // Non-standard fonts
+        CONFIG.nonStandardFonts.forEach(font => {
+            const fontRegex = new RegExp(`font-family[^;]*${font}`, 'gi');
+            if (fontRegex.test(html)) {
+                issues.push({
+                    type: 'CSS Compliance',
+                    element: `font-family: ${font}`,
+                    issue: `Non-standard font "${font}" detected`,
+                    required: true,
+                    suggestion: 'Use "Amazon Ember" as defined in CSS',
+                    location: ''
+                });
+            }
+        });
+
+        // Pixel font sizes
+        const pxFontSizes = html.match(/font-size\s*:\s*\d+px/gi);
+        if (pxFontSizes && pxFontSizes.length > 3) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: 'font-size: px',
+                issue: `Found ${pxFontSizes.length} inline px font-size declarations`,
+                required: false,
+                suggestion: 'Use rem units (1rem, 0.875rem, etc.) or CSS',
+                location: ''
+            });
+        }
+
+        // Inline colors
+        const inlineColors = html.match(/\bcolor\s*:\s*#[0-9a-fA-F]{3,6}/gi);
+        if (inlineColors && inlineColors.length > 5) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: 'color: #...',
+                issue: `Found ${inlineColors.length} inline color declarations`,
+                required: false,
+                suggestion: 'Use CSS classes or CSS variables',
+                location: ''
+            });
+        }
+
+        // Headings with inline styles
+        const headingsWithStyles = doc.querySelectorAll('h1[style], h2[style], h3[style], h4[style], h5[style], h6[style]');
+        if (headingsWithStyles.length > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<h1-h6 style="">',
+                issue: `Found ${headingsWithStyles.length} heading(s) with inline styles`,
+                required: true,
+                suggestion: 'Use standard CSS heading styles',
+                location: ''
+            });
+        }
+    }
+
+    function validateListClasses(doc, issues) {
+        // Lists with inline list-style
+        const listsWithInlineStyle = doc.querySelectorAll('ul[style*="list-style"], ol[style*="list-style"]');
+        if (listsWithInlineStyle.length > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<ul/ol style="list-style">',
+                issue: `Found ${listsWithInlineStyle.length} list(s) with inline list-style`,
+                required: false,
+                suggestion: `Use standard classes: ${CONFIG.listClasses.join(', ')}`,
+                location: ''
+            });
+        }
+
+        // DO/DO_NOT items not in list
+        doc.querySelectorAll('li.DO, li.DO_NOT').forEach(item => {
+            if (!item.closest('ul, ol')) {
+                issues.push({
+                    type: 'Structure',
+                    element: `li.${item.className}`,
+                    issue: 'DO/DO_NOT item not inside a list',
+                    required: true,
+                    suggestion: 'Place inside <ul> or <ol>',
+                    location: ''
+                });
+            }
+        });
+    }
+
+    function validateLayoutContainers(doc, issues) {
+        // Horizontal containers
+        doc.querySelectorAll('.LayoutContainerHorizontal').forEach(container => {
+            const children = container.querySelectorAll('.horizontalContainer');
+            if (children.length === 0) {
+                issues.push({
+                    type: 'Structure',
+                    element: '.LayoutContainerHorizontal',
+                    issue: 'No .horizontalContainer children',
+                    required: true,
+                    suggestion: 'Add <div class="horizontalContainer"> children',
+                    location: ''
+                });
+            }
+
+            children.forEach(child => {
+                const style = child.getAttribute('style') || '';
+                if (style.includes('width') && style.includes('px')) {
+                    issues.push({
+                        type: 'CSS Compliance',
+                        element: '.horizontalContainer',
+                        issue: 'Fixed pixel width on container',
+                        required: false,
+                        suggestion: 'Let CSS handle responsive sizing',
+                        location: ''
+                    });
+                }
+            });
+        });
+
+        // Row containers
+        doc.querySelectorAll('.row').forEach(row => {
+            const style = row.getAttribute('style') || '';
+            if (style.includes('width')) {
+                issues.push({
+                    type: 'CSS Compliance',
+                    element: '.row',
+                    issue: 'Row has inline width style',
+                    required: false,
+                    suggestion: '.row should be 100% as defined in CSS',
+                    location: ''
+                });
+            }
+        });
+    }
+
+    function validateEmphasisBoxes(doc, issues) {
+        // Non-standard box divs
+        const divsWithBorder = doc.querySelectorAll('div[style*="border:"], div[style*="border-color"]');
+        let nonStandardBoxes = 0;
+
+        divsWithBorder.forEach(div => {
+            const style = div.getAttribute('style') || '';
+            const hasStandardClass = CONFIG.emphasisBoxClasses.some(cls => div.classList.contains(cls));
+            const isCallout = CONFIG.calloutClasses.some(cls => div.classList.contains(cls));
+            const isColoredMargin = CONFIG.coloredMarginClasses.some(cls => div.classList.contains(cls));
+
+            if ((style.includes('border-radius') || style.includes('padding')) &&
+                !hasStandardClass && !isCallout && !isColoredMargin) {
+                nonStandardBoxes++;
+            }
+        });
+
+        if (nonStandardBoxes > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<div style="border...">',
+                issue: `Found ${nonStandardBoxes} non-standard box div(s)`,
+                required: false,
+                suggestion: `Use: ${CONFIG.emphasisBoxClasses.join(', ')}`,
+                location: ''
+            });
+        }
+    }
+
+    function validateSemanticSpans(doc, issues) {
+        // Inline italic spans
+        const italicSpans = doc.querySelectorAll('span[style*="italic"]');
+        if (italicSpans.length > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<span style="font-style:italic">',
+                issue: `Found ${italicSpans.length} span(s) with inline italic`,
+                required: true,
+                suggestion: 'Use <em> tag instead',
+                location: ''
+            });
+        }
+
+        // Inline bold spans
+        const boldSpans = doc.querySelectorAll('span[style*="bold"], span[style*="font-weight"]');
+        if (boldSpans.length > 0) {
+            issues.push({
+                type: 'CSS Compliance',
+                element: '<span style="font-weight:bold">',
+                issue: `Found ${boldSpans.length} span(s) with inline bold`,
+                required: true,
+                suggestion: 'Use <strong> with appropriate class',
+                location: ''
+            });
+        }
+    }
+
+    // ===========================================
+    // CONTENT QUALITY VALIDATION
+    // ===========================================
+
+    function validateContentQuality(doc, issues) {
+        // Long paragraphs
+        let longParagraphs = 0;
+        doc.querySelectorAll('p').forEach(p => {
+            const wordCount = p.textContent.trim().split(/\s+/).length;
+            if (wordCount > 150) longParagraphs++;
+        });
+
+        if (longParagraphs > 0) {
+            issues.push({
+                type: 'Content',
+                element: '<p>',
+                issue: `Found ${longParagraphs} paragraph(s) with 150+ words`,
+                required: false,
+                suggestion: 'Break into smaller paragraphs',
+                location: ''
+            });
+        }
+
+        // Long headings
+        let longHeadings = 0;
+        doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+            if (h.textContent.trim().length > 80) longHeadings++;
+        });
+
+        if (longHeadings > 0) {
+            issues.push({
+                type: 'Content',
+                element: '<h1-h6>',
+                issue: `Found ${longHeadings} heading(s) longer than 80 characters`,
+                required: false,
+                suggestion: 'Keep headings concise',
+                location: ''
+            });
+        }
+
+        // Empty paragraphs
+        let emptyParagraphs = 0;
+        doc.querySelectorAll('p').forEach(p => {
+            if (!p.textContent.trim() && p.children.length === 0) emptyParagraphs++;
+        });
+
+                if (emptyParagraphs > 2) {
+            issues.push({
+                type: 'HTML',
+                element: '<p>',
+                issue: `Found ${emptyParagraphs} empty paragraph(s)`,
+                required: false,
+                suggestion: 'Remove empty paragraphs or use CSS margins',
+                location: ''
+            });
+        }
+
+        // Placeholder text
+        const allText = doc.textContent;
+        const placeholderPatterns = [
+            { pattern: /lorem ipsum/i, name: 'Lorem Ipsum' },
+            { pattern: /\[insert.*?\]/i, name: '[Insert...]' },
+            { pattern: /\[add.*?\]/i, name: '[Add...]' },
+            { pattern: /\[todo\]/i, name: '[TODO]' },
+            { pattern: /\[placeholder\]/i, name: '[Placeholder]' },
+            { pattern: /xxxx+/i, name: 'XXXX' },
+            { pattern: /\btbd\b/i, name: 'TBD' }
+        ];
+
+        placeholderPatterns.forEach(({ pattern, name }) => {
+            if (pattern.test(allText)) {
+                issues.push({
+                    type: 'Content',
+                    element: 'text',
+                    issue: `Possible placeholder text found: ${name}`,
+                    required: true,
+                    suggestion: 'Replace placeholder with actual content',
+                    location: ''
+                });
+            }
+        });
+
+        // Deeply nested lists (4+ levels)
+        const deeplyNestedLists = doc.querySelectorAll('ul ul ul ul, ol ol ol ol, ul ol ol ol, ol ul ul ul');
+        if (deeplyNestedLists.length > 0) {
+            issues.push({
+                type: 'Structure',
+                element: '<ul>/<ol>',
+                issue: `Found ${deeplyNestedLists.length} list(s) nested 4+ levels`,
+                required: false,
+                suggestion: 'Consider restructuring for better readability',
+                location: ''
+            });
+        }
+
+        // Very long lists (more than 15 items at top level)
+        doc.querySelectorAll('ul, ol').forEach((list, index) => {
+            // Only check top-level lists (not nested)
+            if (!list.parentElement.closest('ul, ol')) {
+                const directItems = list.querySelectorAll(':scope > li');
+                if (directItems.length > 15) {
+                    issues.push({
+                        type: 'Content',
+                        element: `${list.tagName.toLowerCase()}[${index + 1}]`,
+                        issue: `List has ${directItems.length} items (more than 15)`,
+                        required: false,
+                        suggestion: 'Consider breaking into smaller lists with subheadings',
+                        location: ''
+                    });
+                }
+            }
+        });
+    }
+
+    // ===========================================
+    // INLINE STYLES VALIDATION
+    // ===========================================
+
+    function validateInlineStyles(doc, issues) {
+        const elementsWithStyles = doc.querySelectorAll('[style]');
+        let totalInlineStyles = elementsWithStyles.length;
+        let importantCount = 0;
+        let outlineNoneCount = 0;
+        let displayNoneCount = 0;
+        let positionAbsoluteCount = 0;
+
+        elementsWithStyles.forEach(el => {
+            const style = (el.getAttribute('style') || '').toLowerCase();
+
+            if (style.includes('!important')) importantCount++;
+            if (style.includes('outline') && style.includes('none')) outlineNoneCount++;
+            if (style.includes('display') && style.includes('none')) displayNoneCount++;
+            if (style.includes('position') && style.includes('absolute')) positionAbsoluteCount++;
+        });
+
+        // Only flag if excessive inline styles
+        if (totalInlineStyles > 50) {
+            issues.push({
+                type: 'CSS',
+                element: 'style=""',
+                issue: `Found ${totalInlineStyles} elements with inline styles`,
+                required: false,
+                suggestion: 'Consider moving styles to CSS classes',
+                location: ''
+            });
+        }
+
+        if (importantCount > 0) {
+            issues.push({
+                type: 'CSS',
+                element: '!important',
+                issue: `Found ${importantCount} use(s) of !important`,
+                required: true,
+                suggestion: 'Avoid !important - fix CSS cascade instead',
+                location: ''
+            });
+        }
+
+        if (outlineNoneCount > 0) {
+            issues.push({
+                type: 'Accessibility',
+                element: 'outline: none',
+                issue: `Found ${outlineNoneCount} element(s) with outline:none`,
+                required: true,
+                suggestion: 'Do not remove focus outlines',
+                location: ''
+            });
+        }
+
+        if (displayNoneCount > 5) {
+            issues.push({
+                type: 'CSS',
+                element: 'display: none',
+                issue: `Found ${displayNoneCount} element(s) with display:none`,
+                required: false,
+                suggestion: 'Review hidden elements for appropriateness',
+                location: ''
+            });
+        }
+
+        if (positionAbsoluteCount > 3) {
+            issues.push({
+                type: 'CSS',
+                element: 'position: absolute',
+                issue: `Found ${positionAbsoluteCount} element(s) with position:absolute`,
+                required: false,
+                suggestion: 'Absolute positioning may break responsive layout',
+                location: ''
+            });
+        }
+    }
+
+    // ===========================================
+    // UTILITY FUNCTIONS
+    // ===========================================
+
+    function getElementLocation(element) {
+        if (!element) return '';
+
+        try {
+            let html = element.outerHTML || '';
+            if (html.length > 150) {
+                const tagEnd = html.indexOf('>');
+                if (tagEnd > 0 && tagEnd < 150) {
+                    html = html.substring(0, tagEnd + 1) + '...';
+                } else {
+                    html = html.substring(0, 150) + '...';
+                }
+            }
+            return html;
+        } catch (e) {
+            return '';
+        }
     }
 
     function exportToCSV(issues) {
         try {
-            // Add timestamp to report
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const headers = ['Type', 'Element', 'Issue', 'Required', 'Suggestion', 'Location'];
 
-            // Include more detailed information in the headers
-            const headers = ['Type', 'Element', 'Issue', 'Required', 'Suggestion', 'Location in Code'];
             const csvContent = [
                 headers.join(','),
                 ...issues.map(issue => [
                     issue.type,
                     issue.element,
                     issue.issue,
-                    issue.required,
+                    issue.required ? 'Yes' : 'No',
                     issue.suggestion,
                     issue.location || 'N/A'
-                ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+                ].map(field => `"${String(field).replace(/"/g, '""').replace(/\n/g, ' ')}"`).join(','))
             ].join('\n');
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
-
-            // Create more descriptive filename
             const pageTitle = document.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             const filename = `content-validation_${pageTitle}_${timestamp}.csv`;
 
@@ -440,18 +2282,20 @@ function validateWatsonSOPStructure(doc, issues) {
                 name: filename
             });
 
-            // Show summary to user
             const summary = summarizeIssues(issues);
             alert(`Validation complete!\n\n${summary}\n\nReport saved as: ${filename}`);
         } catch (e) {
             console.error('Error exporting to CSV:', e);
-            alert('Error creating validation report. Check console for details.');
+            // Fallback: show issues in console
+            console.table(issues);
+            alert('Error creating CSV. Check console for results.');
         }
     }
 
     function summarizeIssues(issues) {
-        // Create a summary of issues by type
         const summary = {};
+        const requiredCount = issues.filter(i => i.required).length;
+
         issues.forEach(issue => {
             if (!summary[issue.type]) {
                 summary[issue.type] = 0;
@@ -459,2429 +2303,12 @@ function validateWatsonSOPStructure(doc, issues) {
             summary[issue.type]++;
         });
 
-        // Format the summary
-        let summaryText = `Found ${issues.length} total issues:\n`;
-        for (const [type, count] of Object.entries(summary)) {
-            summaryText += `\n${type}: ${count} issues`;
+        let summaryText = `Found ${issues.length} total issues (${requiredCount} required fixes):\n`;
+        for (const [type, count] of Object.entries(summary).sort((a, b) => b[1] - a[1])) {
+            summaryText += `\n• ${type}: ${count}`;
         }
 
         return summaryText;
     }
 
-    // Utility function to check if element is visible
-    function isVisible(element) {
-        return !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
-    }
-
-    // Utility function to get element's XPath
-    function getXPath(element) {
-        if (!element) return '';
-        try {
-            if (element.id) {
-                return `//*[@id="${element.id}"]`;
-            }
-            if (element === document.body) {
-                return '/html/body';
-            }
-            let path = '';
-            while (element.parentNode) {
-                let sibCount = 0;
-                let sibIndex = 0;
-                for (let sib = element.previousSibling; sib; sib = sib.previousSibling) {
-                    if (sib.nodeType === 1 && sib.tagName === element.tagName) {
-                        sibCount++;
-                    }
-                }
-                for (let sib = element; sib; sib = sib.previousSibling) {
-                    if (sib.nodeType === 1 && sib.tagName === element.tagName) {
-                        sibIndex++;
-                    }
-                }
-                const tagName = element.tagName.toLowerCase();
-                const pathIndex = (sibCount > 0 ? `[${sibIndex}]` : '');
-                path = `/${tagName}${pathIndex}${path}`;
-                element = element.parentNode;
-            }
-            return path;
-        } catch (e) {
-            console.error('Error generating XPath:', e);
-            return '';
-        }
-    }
-
-// Define validation rules
-const validationRules = [
-  {
-  "category": "html",
-  "checkType": "regex",
-  "pattern": "<title>\\s*\\S+",
-  "required": true,
-  "suggestion": "Include descriptive <title> tag with content",
-  "description": "Missing or empty <title> tag"
-},
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>(?!([\\s\\S]*?<thead|[\\s\\S]*?<tr[^>]*>\\s*<th))",
-    "required": false,
-    "suggestion": "Tables should have either a <thead> section or a first row with <th> elements for proper structure and accessibility",
-    "description": "Table missing header structure (no thead or th elements)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>[\\s\\S]*?<tr[^>]*>[\\s\\S]*?</tr>[\\s\\S]*?(?!<tr)[\\s\\S]*?</table>",
-    "required": false,
-    "suggestion": "Don't use tables for single rows of content. Consider using divs with appropriate styling or a more semantic structure",
-    "description": "Single-row table detected - tables should be used for data relationships, not layout"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>\\s*(?:<thead>)?\\s*<tr[^>]*>[\\s\\S]*?</tr>\\s*(?:</thead>)?\\s*(?!<tr)[\\s\\S]*?</table>",
-    "required": false,
-    "suggestion": "Single row tables indicate potential misuse of tables for layout. Consider:\n1. For layout: Use CSS Grid or Flexbox\n2. For data: Add more rows or use a different component\n3. For lists: Use <ul> or <ol>",
-    "description": "Table with single row detected - might be misused for layout"
-  },
-  {
-    "category": "html",
-    "checkType": "forbidden_tag",
-    "pattern": "<font>",
-    "required": false,
-    "suggestion": "Remove deprecated <font> tag",
-    "description": "Deprecated tag used"
-  },
-  {
-    "category": "html",
-    "checkType": "forbidden_tag",
-    "pattern": "<center>",
-    "required": false,
-    "suggestion": "Replace with CSS text-align",
-    "description": "Deprecated <center> tag"
-  },
-  {
-    "category": "html",
-    "checkType": "forbidden_tag",
-    "pattern": "<marquee>",
-    "required": false,
-    "suggestion": "Avoid <marquee>; use CSS animation instead",
-    "description": "Deprecated <marquee> element"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]+id\\s*=\\s*['\\\"]content['\\\"]?",
-    "required": false,
-    "suggestion": "Use <main> instead of <div id='content'>",
-    "description": "Non-semantic main container found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<section(?![^>]*aria-label)[^>]*>",
-    "required": false,
-    "suggestion": "Add aria-label to <section> for screen reader clarity",
-    "description": "Section missing aria-label"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<header(?![^>]*role=)[^>]*>",
-    "required": false,
-    "suggestion": "Add role='banner' for header landmarks",
-    "description": "Missing ARIA role on header"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<footer(?![^>]*role=)[^>]*>",
-    "required": false,
-    "suggestion": "Add role='contentinfo' for footer",
-    "description": "Footer missing ARIA role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<nav(?![^>]*aria-label)[^>]*>",
-    "required": false,
-    "suggestion": "Provide aria-label for navigation menus",
-    "description": "Navigation missing label"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<article(?![^>]*aria-labelledby)[^>]*>",
-    "required": false,
-    "suggestion": "Add aria-labelledby for article region",
-    "description": "Article missing label"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table(?![^>]*summary=)[^>]*>",
-    "required": false,
-    "suggestion": "Add summary/caption for table context",
-    "description": "Table missing summary"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<ul[^>]*>\\s*(?!\\s*<li)",
-    "required": false,
-    "suggestion": "Ensure lists contain <li> elements",
-    "description": "Empty list detected"
-  },
-  {
-  "category": "html",
-  "checkType": "regex",
-  "pattern": "<ol[^>]*>\\s*(?!\\s*<li)",
-  "required": false,
-  "suggestion": "Ensure ordered lists contain <li>",
-  "description": "Empty ordered list"
-},
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<blockquote(?![^>]*cite=)[^>]*>",
-    "required": false,
-    "suggestion": "Include cite attribute for blockquotes",
-    "description": "Missing citation source"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<dl(?![^>]*dt)[^>]*>",
-    "required": false,
-    "suggestion": "Ensure <dl> contains <dt>/<dd> pairs",
-    "description": "Malformed description list"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<meta\\s+name=['\\\"]description['\\\"]\\s+content=['\\\"]{01}['\\\"]{01}",
-    "required": true,
-    "suggestion": "Add meta description",
-    "description": "Missing meta description"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<link[^>]*rel=['\\\"]canonical['\\\"]",
-    "required": true,
-    "suggestion": "Add canonical link to prevent duplicate content",
-    "description": "Missing canonical link"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "missing_alt",
-    "pattern": "alt=\"\"",
-    "required": false,
-    "suggestion": "Add descriptive alt text for all <img>",
-    "description": "Image missing alt text"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<button(?![^>]*aria-label)(?![^>]*title)[^>]*>",
-    "required": false,
-    "suggestion": "Add aria-label or title",
-    "description": "Button missing accessible name"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<input(?![^>]*aria-label)(?![^>]*title)[^>]*>",
-    "required": false,
-    "suggestion": "Add label, aria-label, or title",
-    "description": "Input missing label"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<textarea(?![^>]*aria-label)(?![^>]*title)[^>]*>",
-    "required": false,
-    "suggestion": "Add label to text areas",
-    "description": "Textarea missing label"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<a(?![^>]*href=)[^>]*>",
-    "required": false,
-    "suggestion": "Add href or use <button>",
-    "description": "Anchor missing href"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<a[^>]*href=['\\\"]#['\\\"]",
-    "required": false,
-    "suggestion": "Provide valid link targets",
-    "description": "Anchor links to #"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<iframe(?![^>]*title)[^>]*>",
-    "required": false,
-    "suggestion": "Add title for iframe",
-    "description": "Iframe missing title"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<video(?![^>]*controls)[^>]*>",
-    "required": false,
-    "suggestion": "Add controls to videos",
-    "description": "Video missing controls"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<audio(?![^>]*controls)[^>]*>",
-    "required": false,
-    "suggestion": "Add controls to audio",
-    "description": "Audio missing controls"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<form(?![^>]*aria-label)(?![^>]*label)[^>]*>",
-    "required": false,
-    "suggestion": "Add form label or ARIA label",
-    "description": "Form missing accessible name"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<th(?![^>]*scope=)[^>]*>",
-    "required": false,
-    "suggestion": "Add scope='col' or 'row' to <th>",
-    "description": "Missing table header scope"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<td[^>]*headers=",
-    "required": false,
-    "suggestion": "Ensure <td> references <th> IDs",
-    "description": "Table data not linked to headers"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "tabindex\\s*=\\s*['\\\"]-[1-9]+['\\\"]",
-    "required": false,
-    "suggestion": "Do not remove elements from tab order",
-    "description": "Negative tabindex"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]presentation['\\\"]",
-    "required": false,
-    "suggestion": "Confirm no interactive children",
-    "description": "Potential ARIA misuse"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "style\\s*=\\s*['\\\"][^'\\\"]*color\\s*:\\s*(#ff0000|#f00|red)[^'\\\"]*['\\\"]",
-    "required": false,
-    "suggestion": "Avoid pure red text",
-    "description": "Low contrast red text"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "@media\\s*\\(prefers-reduced-motion:\\s*reduce\\)",
-    "required": true,
-    "suggestion": "Respect reduced motion preference",
-    "description": "Missing reduced-motion query"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "@media\\s*\\(forced-colors:\\s*active\\)",
-    "required": true,
-    "suggestion": "Ensure high contrast support",
-    "description": "Missing forced-color query"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": ":focus-visible",
-    "required": true,
-    "suggestion": "Ensure focus outlines visible",
-    "description": "Missing focus-visible handling"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "\\.visually-hidden",
-    "required": true,
-    "suggestion": "Include visually hidden class for screen readers",
-    "description": "Missing visually-hidden support"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "font-family\\s*:\\s*(?!.*Amazon Ember)",
-    "required": true,
-    "suggestion": "Use Amazon Ember font",
-    "description": "Non-standard font family"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "color\\s*:\\s*(#000|black)",
-    "required": false,
-    "suggestion": "Use var(--primary-color) for text",
-    "description": "Avoid pure black text"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "background-color\\s*:\\s*(#fff|white)",
-    "required": false,
-    "suggestion": "Use var(--light-gray) for background",
-    "description": "Avoid pure white"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "float\\s*:\\s*(left|right)",
-    "required": false,
-    "suggestion": "Use flex/grid layout",
-    "description": "Floats are deprecated"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "!important",
-    "required": true,
-    "suggestion": "Avoid !important; fix cascade",
-    "description": "!important used"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "outline:\\s*none",
-    "required": true,
-    "suggestion": "Keep focus outlines",
-    "description": "Focus indicator removed"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "display\\s*:\\s*inline-block",
-    "required": true,
-    "suggestion": "Prefer flexbox/grid",
-    "description": "Inline-block layout discouraged"
-  },
-    /*
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "z-index\\s*:\\s*\\d{3}",
-    "required": false,
-    "suggestion": "Keep z-index <100",
-    "description": "High z-index found"
-  },
-  */
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.button--[1-4]",
-    "required": true,
-    "suggestion": "Use Watson button classes for consistency",
-    "description": "Missing standard button style"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "style=\"[^\"]*display:\\s*none",
-    "required": false,
-    "suggestion": "Carefully review use of display:none - ensure content isn't being hidden inappropriately",
-    "description": "Hidden content detected with display:none"
-},
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.animated_button_(red|green)",
-    "required": true,
-    "suggestion": "Use standard Watson animated buttons",
-    "description": "Custom animation class found"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.update-button",
-    "required": true,
-    "suggestion": "Follow Watson update button design",
-    "description": "Ensure proper update button styling"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.collapsible",
-    "required": true,
-    "suggestion": "Use standard collapsible class",
-    "description": "Ensure collapsible matches Watson style"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.flip-card",
-    "required": true,
-    "suggestion": "Use approved flip card layout",
-    "description": "Ensure flip-card markup follows standard"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.dropdown",
-    "required": true,
-    "suggestion": "Use Watson dropdown style",
-    "description": "Dropdown class missing"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.popup-container",
-    "required": true,
-    "suggestion": "Use standardized popup markup",
-    "description": "Popup container missing"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.tree-list",
-    "required": true,
-    "suggestion": "Use standardized tree list styles",
-    "description": "Tree list missing class"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.Htab_tag",
-    "required": true,
-    "suggestion": "Ensure correct heading tab styles",
-    "description": "Missing Htab_tag element"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "@media\\s*\\(max-width:\\s*768px\\)",
-    "required": true,
-    "suggestion": "Responsive layout must exist",
-    "description": "Missing responsive breakpoint"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "@media\\s*\\(forced-colors:\\s*active\\)",
-    "required": true,
-    "suggestion": "Support high contrast",
-    "description": "Missing forced color rules"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.dark-mode",
-    "required": true,
-    "suggestion": "Support dark mode",
-    "description": "Dark mode class missing"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.pulsing_button",
-    "required": true,
-    "suggestion": "Avoid excessive motion, include prefers-reduced-motion",
-    "description": "Check pulsing animation compliance"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.update-button:focus",
-    "required": true,
-    "suggestion": "Focus outline must be visible",
-    "description": "Missing focus state for button"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "style\\s*=\\s*['\\\"][^'\\\"]*(background|color|padding|margin|font)[^'\\\"]*['\\\"]",
-    "required": false,
-    "suggestion": "Move inline styles to CSS",
-    "description": "Inline style found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "style\\s*=\\s*['\\\"][^'\\\"]*!important[^'\\\"]*['\\\"]",
-    "required": false,
-    "suggestion": "Avoid !important inline styles",
-    "description": "Inline override found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<[^>]*class\\s*=\\s*['\\\"][^'\\\"]*(button--|update-button|animated_button)[^'\\\"]*['\\\"].*style=",
-    "required": false,
-    "suggestion": "Do not override button styles inline",
-    "description": "Inline override on Watson button"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "on(click|mouseover|keydown|submit)=",
-    "required": false,
-    "suggestion": "Move event handlers to JS",
-    "description": "Inline event found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<script[^>]*src=['\\\"]http:",
-    "required": false,
-    "suggestion": "Use HTTPS for scripts",
-    "description": "Insecure script link"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<script[^>]*>[^<]*(alert|prompt|confirm)\\(.*\\)[^<]*</script>",
-    "required": false,
-    "suggestion": "Remove debug alerts",
-    "description": "Debug JS found"
-  },
-  {
-  "category": "html",
-  "checkType": "required_tag",
-  "pattern": "<h1>",
-  "required": true,
-  "suggestion": "Include one <h1> heading",
-  "description": "Missing H1 heading"
-},
-{
-  "category": "html",
-  "checkType": "regex",
-  "pattern": "(<h1[^>]*>.*?</h1>.*?){2,}",
-  "required": false,
-  "suggestion": "Use only one <h1> per page",
-  "description": "Multiple <h1> elements found"
-},
-/*
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h2[^>]*>.*?</h2>",
-    "required": true,
-    "suggestion": "Use <h2> for sections",
-    "description": "Missing section heading"
-  },
-  */
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<br\\s*/?>\\s*<br\\s*/?>",
-    "required": false,
-    "suggestion": "Check if you should use a standalone tag instead",
-    "description": "Multiple <br> tags found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img[^>]*width=['\\\"][0-9]+['\\\"][^>]*height=['\\\"][0-9]+['\\\"]?",
-    "required": false,
-    "suggestion": "Use CSS for sizing",
-    "description": "Hardcoded image dimensions"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<video(?![^>]*aria-label)(?![^>]*title)[^>]*>",
-    "required": false,
-    "suggestion": "Add aria-label to describe video",
-    "description": "Video missing label"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<audio(?![^>]*aria-label)(?![^>]*title)[^>]*>",
-    "required": false,
-    "suggestion": "Add aria-label to describe audio",
-    "description": "Audio missing label"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<meta\\s+http-equiv=['\\\"]refresh['\\\"]",
-    "required": false,
-    "suggestion": "Avoid meta refresh redirects",
-    "description": "Meta refresh detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<a[^>]*>[\\s]*click here[\\s]*</a>",
-    "required": false,
-    "suggestion": "Use descriptive link text",
-    "description": "Generic link text found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<a[^>]*target=['\\\"]_blank['\\\"](?![^>]*aria-label)",
-    "required": false,
-    "suggestion": "Add aria-label '(opens in new window)'",
-    "description": "Missing accessibility notice on external link"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*id=['\\\"]TOCRight['\\\"]?",
-    "required": true,
-    "suggestion": "Ensure floating TOC element exists",
-    "description": "Missing floating TOC"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "#s4-[a-zA-Z0-9\\-_]+\\s*\\{[^}]*display\\s*:\\s*none",
-    "required": true,
-    "suggestion": "Do not modify visibility of SharePoint s4 elements",
-    "description": "SharePoint native s4 element visibility modified"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_selector",
-    "pattern": "#s4-[a-zA-Z0-9\\-_]+",
-    "required": true,
-    "suggestion": "Avoid targeting SharePoint native configuration elements",
-    "description": "CSS targeting SharePoint s4 elements"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "\\.s4-[a-zA-Z0-9\\-_]+",
-    "required": true,
-    "suggestion": "Do not modify SharePoint s4 class elements",
-    "description": "CSS targeting SharePoint s4 class elements"
-  },
-  {
-    "category": "css",
-    "checkType": "required_property",
-    "pattern": "\\.WatsonSOPBody\\s*\\{[^}]*margin-left\\s*:\\s*30px",
-    "required": true,
-    "suggestion": "Use standard 30px left margin in WatsonSOPBody",
-    "description": "Non-standard left margin in WatsonSOPBody"
-  },
-  {
-    "category": "css",
-    "checkType": "required_property",
-    "pattern": "\\.WatsonSOPBody\\s*\\{[^}]*max-width\\s*:\\s*85%",
-    "required": true,
-    "suggestion": "Use max-width: 85% for responsive design",
-    "description": "Non-standard max-width in WatsonSOPBody"
-  },
-  {
-    "category": "css",
-    "checkType": "required_property",
-    "pattern": "font-family\\s*:\\s*[\"\\']?Amazon Ember[\"\\']?",
-    "required": true,
-    "suggestion": "Use Amazon Ember as primary font",
-    "description": "Amazon Ember font not set as primary"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h1>.*?</h1>.*?<h3>",
-    "required": false,
-    "suggestion": "Use h2 before h3; maintain heading hierarchy",
-    "description": "Heading hierarchy violated (h1 to h3 skip)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h2>.*?</h2>.*?<h4>",
-    "required": false,
-    "suggestion": "Use h3 before h4; maintain heading hierarchy",
-    "description": "Heading hierarchy violated (h2 to h4 skip)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table(?![^>]*class=)",
-    "required": false,
-    "suggestion": "Apply table style class",
-    "description": "Missing table class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img(?![^>]*class=)",
-    "required": false,
-    "suggestion": "Apply image class ",
-    "description": "Missing image class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<strong(?![^>]*class=[\"\\']ui[\"\\'])[^>]*>(?:Click|Select|Choose|Press)",
-    "required": false,
-    "suggestion": "Use class=\"ui\" for UI elements users interact with",
-    "description": "UI element missing .ui class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "\\$\\?![^<]*</span>",
-    "required": false,
-    "suggestion": "Wrap tokens/placeholders in <span class=\"token\">",
-    "description": "Token/placeholder missing .token class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<strong(?![^>]*class=[\"\\']blurb[\"\\'])'",
-    "required": false,
-    "suggestion": "Use class=\"blurb\" for CTCM blurbs",
-    "description": "Blurb missing .blurb class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<strong(?![^>]*class=[\"\\']queue[\"\\'])'",
-    "required": false,
-    "suggestion": "Use class=\"queue\" for queue names users interact with",
-    "description": "Queue element missing .queue class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div class=\"(note|warning|important|tip|example|exception|bestPractice|annotation|script|template)\"(?![^>]*role=)",
-    "required": false,
-    "suggestion": "Add role and aria attributes to call-outs for accessibility",
-    "description": "Call-out missing accessibility attributes"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"tab\"(?![^>]*role=\"tablist\")",
-    "required": false,
-    "suggestion": "Add role=\"tablist\" to tab containers",
-    "description": "Tab container missing tablist role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<b>",
-    "required": false,
-    "suggestion": "Use <strong> instead of <b> for semantic HTML",
-    "description": "Non-semantic <b> tag used"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<i>",
-    "required": false,
-    "suggestion": "Use <em> instead of <i> for semantic HTML",
-    "description": "Non-semantic <i> tag used"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*id=\"toc\"(?![^>]*role=\"navigation\")",
-    "required": false,
-    "suggestion": "Add role=\"navigation\" and aria-label to TOC",
-    "description": "TOC missing navigation role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "[^\\x00-\\x7F]{10}(?![^<]*xml:lang=)(?![^<]*lang=)",
-    "required": false,
-    "suggestion": "Use lang or xml:lang attribute for non-English content",
-    "description": "Non-English content missing language attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<span class=\"propernoun\">",
-    "required": false,
-    "suggestion": "Use .propernoun class for proper nouns to avoid Acrolinx flags",
-    "description": "Proper noun class usage for capitalization"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<span class=\"tool\">",
-    "required": false,
-    "suggestion": "Use .tool class for investigation tools",
-    "description": "Tool class for investigation tools"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<(acronym|abbr)(?![^>]*title=)",
-    "required": false,
-    "suggestion": "Add title attribute to acronyms and abbreviations",
-    "description": "Acronym/abbreviation missing title attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>(?![^<]*<th)",
-    "required": false,
-    "suggestion": "Use layout grid (LayoutContainerHorizontal) instead of tables for layout",
-    "description": "Table used for layout instead of data"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<(ul|ol)>\\s*<li class=\"(DO|DO_NOT)\">",
-    "required": false,
-    "suggestion": "Use DO/DO_NOT classes for important reminders list",
-    "description": "Important reminders list structure"
-  },
-{
-  "category": "structure",
-  "checkType": "regex",
-  "pattern": "<div[^>]*id=['\"]WatsonSOPBody['\"]",
-  "required": true,
-  "suggestion": "Change <div id=\"WatsonSOPBody\"> to <div class=\"WatsonSOPBody\">. WatsonSOPBody must be a class, not an ID.",
-  "description": "WatsonSOPBody incorrectly used as ID instead of class"
-},
-{
-  "category": "structure",
-  "checkType": "regex",
-  "pattern": "<div[^>]*class=['\"][^'\"]*\\btoc\\b[^'\"]*['\"]",
-  "required": true,
-  "suggestion": "Change <div class=\"toc\"> to <div id=\"toc\">. The toc element must be an ID, not a class.",
-  "description": "toc incorrectly used as class instead of ID"
-},
-{
-  "category": "structure",
-  "checkType": "regex",
-  "pattern": "<div[^>]*class=['\"][^'\"]*\\bcol-TOC\\b[^'\"]*['\"]",
-  "required": true,
-  "suggestion": "Change <div class=\"col-TOC\"> to <div id=\"col-TOC\">. The toc-body element must be an ID, not a class.",
-  "description": "col-TOC incorrectly used as class instead of ID"
-},
-{
-  "category": "structure",
-  "checkType": "regex",
-  "pattern": "<div[^>]*class=['\"][^'\"]*\\bcol-body\\b[^'\"]*['\"]",
-  "required": true,
-  "suggestion": "Change <div class=\"col-body\"> to <div id=\"col-body\">. The col-body element must be an ID, not a class.",
-  "description": "col-body incorrectly used as class instead of ID"
-},
-    {
-  "category": "structure",
-  "checkType": "regex",
-  "pattern": "<div[^>]*class=['\"][^'\"]*\\brow\\b[^'\"]*['\"]",
-  "required": true,
-  "suggestion": "Change <div class=\"row\"> to <div id=\"row\">. The row element must be an ID, not a class.",
-  "description": "row incorrectly used as class instead of ID"
-},
-  {
-    "category": "css",
-    "checkType": "required_property",
-    "pattern": "margin-right\\s*:\\s*15%",
-    "required": true,
-    "suggestion": "Use 15% right margin for responsive design",
-    "description": "Non-standard right margin"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"dataTable\"",
-    "required": false,
-    "suggestion": "Use dataTable class for filterable tables",
-    "description": "Filterable table structure"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"(blue|orange|grey|ink)\"(?![^>]*<span[^>]*class=\"visually-hidden\")",
-    "required": false,
-    "suggestion": "Add visually-hidden span for colored margins to describe content to screen readers",
-    "description": "Colored margin missing screen reader description"
-  },
-  {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<div class=\"row\">",
-    "required": true,
-    "suggestion": "Floating TOC requires row container wrapper",
-    "description": "Missing row container for floating TOC layout"
-  },
-  {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<div id=\"col-TOC\">",
-    "required": true,
-    "suggestion": "Floating TOC requires col-TOC container",
-    "description": "Missing col-TOC container for floating TOC"
-  },
-  {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<div class=\"sticky\">",
-    "required": true,
-    "suggestion": "Floating TOC requires sticky div inside col-TOC",
-    "description": "Missing sticky property for floating TOC"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"col-TOC\">\\s*<div class=\"sticky\">\\s*<div id=\"toc\"",
-    "required": true,
-    "suggestion": "Floating TOC structure must be: col-TOC > sticky > toc",
-    "description": "Incorrect nesting order for floating TOC elements"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"[^>]*>\\s*</div>\\s*</div>\\s*</div>\\s*<div id=\"col-body\">",
-    "required": true,
-    "suggestion": "Floating TOC must be followed by col-body div",
-    "description": "Missing col-body div after floating TOC structure"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"(?![^>]*role=\"navigation\")",
-    "required": false,
-    "suggestion": "Add role=\"navigation\" to floating TOC",
-    "description": "Floating TOC missing navigation role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"(?![^>]*aria-label)",
-    "required": false,
-    "suggestion": "Add aria-label to floating TOC",
-    "description": "Floating TOC missing aria-label attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"(?![^>]*tabindex=\"0\")",
-    "required": false,
-    "suggestion": "Add tabindex=\"0\" to floating TOC for keyboard access",
-    "description": "Floating TOC missing tabindex attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"[^>]*>(?!.*<span class=\"sr-only\">)",
-    "required": false,
-    "suggestion": "Add screen reader description to floating TOC",
-    "description": "Floating TOC missing screen reader description"
-  },
-  {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<div id=\"TOCRight\">",
-    "required": true,
-    "suggestion": "Right-side floating TOC requires TOCRight container",
-    "description": "Missing TOCRight container"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"TOCRight\">\\s*<div id=\"full\">",
-    "required": true,
-    "suggestion": "TOCRight must contain nested full div",
-    "description": "Incorrect structure for right-side floating TOC"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"TOCRight\"(?![^>]*role=\"navigation\")",
-    "required": false,
-    "suggestion": "Add role=\"navigation\" to right-side TOC",
-    "description": "Right-side TOC missing navigation role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"TOCRight\"(?![^>]*aria-label)",
-    "required": false,
-    "suggestion": "Add aria-label to right-side TOC",
-    "description": "Right-side TOC missing aria-label attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"TOCRight\"(?![^>]*tabindex=\"0\")",
-    "required": false,
-    "suggestion": "Add tabindex=\"0\" to right-side TOC",
-    "description": "Right-side TOC missing tabindex attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"TOCRight\"[^>]*>(?!.*<span class=\"sr-only\">)",
-    "required": false,
-    "suggestion": "Add screen reader instructions to right-side TOC",
-    "description": "Right-side TOC missing screen reader instructions"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"[^>]*>(?!.*<(ul|ol|p))",
-    "required": false,
-    "suggestion": "TOC should contain list or paragraph elements",
-    "description": "Empty or improperly structured TOC"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"toc\"[^>]*>.*(<li>.*</li>.*){16}",
-    "required": false,
-    "suggestion": "TOC contains more than 15 items",
-    "description": "Consider reorganizing your TOC structure"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div id=\"col-TOC\">.*<div id=\"col-body\">(?!.*</div>\\s*</div>\\s*</div>)",
-    "required": false,
-    "suggestion": "Ensure proper closing tags for row and WatsonSOPBody",
-    "description": "Incomplete closing structure for floating TOC layout"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table(?![^>]*>[\\s\\S]*?<th)",
-    "required": false,
-    "suggestion": "Add header row with <th> elements to tables",
-    "description": "Table missing header row"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table(?![^>]*>[\\s\\S]*?<caption)",
-    "required": false,
-    "suggestion": "Add <caption> element to describe table purpose",
-    "description": "Table missing caption for accessibility"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<th(?![^>]*scope=)",
-    "required": false,
-    "suggestion": "Add scope=\"col\" or scope=\"row\" to table headers",
-    "description": "Table header missing scope attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*class=\"(WhiteTable|Grey_2_tone|KeyTermsTable|DefinitionTable)\"",
-    "required": true,
-    "suggestion": "Apply one of the standard table style classes",
-    "description": "Table must use approved style class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<ol[^>]*start=",
-    "required": false,
-    "suggestion": "Remove start attribute unless required for specific numbering",
-    "description": "Ordered list has start attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<ol[^>]*type=",
-    "required": false,
-    "suggestion": "Remove type attribute; use CSS for list styling",
-    "description": "Ordered list has type attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<li[^>]*value=",
-    "required": false,
-    "suggestion": "Remove value attribute from list items",
-    "description": "List item has value attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<iframe(?![^>]*sandbox=)",
-    "required": true,
-    "suggestion": "Add sandbox attribute with appropriate permissions",
-    "description": "Iframe missing sandbox attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<iframe[^>]*sandbox=\"\"",
-    "required": false,
-    "suggestion": "Specify sandbox permissions: allow-same-origin allow-scripts allow-popups allow-forms",
-    "description": "Iframe has empty sandbox attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<iframe(?![^>]*title=)",
-    "required": true,
-    "suggestion": "Add title attribute to describe iframe content",
-    "description": "Iframe missing title attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<iframe[^>]*width=\"\\d+px\"",
-    "required": false,
-    "suggestion": "Use percentage width (e.g., width=\"100%\") for responsive design",
-    "description": "Iframe has fixed pixel width"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img(?![^>]*class=)[^>]*src=\"[^\"]*\\.(png|jpg|jpeg|gif)\"",
-    "required": true,
-    "suggestion": "Apply image class (flag, icon, tiny, flowchart, no_border, or zoom)",
-    "description": "Image missing required style class"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img(?![^>]*alt=)",
-    "required": true,
-    "suggestion": "Add alt attribute with descriptive text (max 160 characters)",
-    "description": "Image missing alt attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img[^>]*alt=\"\"[^>]*>",
-    "required": false,
-    "suggestion": "Provide descriptive alt text or use decorative image handling",
-    "description": "Image has empty alt attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img[^>]*style=\"[^\"]*border[^\"]*\"",
-    "required": false,
-    "suggestion": "Remove inline border styles; use CSS classes instead",
-    "description": "Image has inline border style"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img[^>]*width=\"\\d+\"[^>]*height=\"\\d+\"",
-    "required": false,
-    "suggestion": "Remove fixed dimensions; let CSS handle responsive sizing",
-    "description": "Image has hardcoded dimensions"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<img[^>]*class=\"flowchart\"(?![^>]*aria-describedby=)",
-    "required": true,
-    "suggestion": "Add aria-describedby with detailed flowchart description",
-    "description": "Flowchart image missing aria-describedby"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<button(?![^>]*type=)",
-    "required": true,
-    "suggestion": "Add type=\"button\" or type=\"submit\" to button elements",
-    "description": "Button missing type attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"collapsible\"(?![^>]*aria-expanded=)",
-    "required": true,
-    "suggestion": "Add aria-expanded=\"false\" to collapsible buttons",
-    "description": "Collapsible button missing aria-expanded"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"collapsible\"(?![^>]*aria-controls=)",
-    "required": false,
-    "suggestion": "Add aria-controls to reference controlled section ID",
-    "description": "Collapsible button missing aria-controls"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<button(?![^>]*aria-label=)(?![^>]*>[^<]+<)",
-    "required": false,
-    "suggestion": "Add aria-label or visible text content to button",
-    "description": "Button missing accessible label"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"tablinks\"(?![^>]*role=\"tab\")",
-    "required": false,
-    "suggestion": "Add role=\"tab\" to tab buttons",
-    "description": "Tab button missing role attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "class=\"[^\"]*\\s{2,}[^\"]*\"",
-    "required": false,
-    "suggestion": "Remove extra spaces between class names",
-    "description": "Multiple spaces in class attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "id=\"[^\"]*\\s[^\"]*\"",
-    "required": false,
-    "suggestion": "ID attributes cannot contain spaces",
-    "description": "ID attribute contains spaces"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<[^>]*class=\"\"[^>]*>",
-    "required": false,
-    "suggestion": "Remove empty class attributes",
-    "description": "Empty class attribute found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<[^>]*id=\"\"[^>]*>",
-    "required": false,
-    "suggestion": "Remove empty id attributes",
-    "description": "Empty id attribute found"
-  },
-  {
-    "category": "html",
-    "checkType": "duplicate_check",
-    "pattern": "id=\"([^\"]+)\"",
-    "required": true,
-    "suggestion": "Ensure all ID attributes are unique within the document",
-    "description": "Duplicate ID found in document"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<strong[^>]*>(?:Click|Select|Choose|Press|Navigate)(?![^<]*</strong>[^<]*<[^>]*class=\"ui\")",
-    "required": false,
-    "suggestion": "Add class=\"ui\" to UI interaction elements",
-    "description": "UI interaction element missing .ui class"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"(note|warning|important|tip|example|exception|bestPractice|annotation|script|template)\"(?![^>]*role=)",
-    "required": true,
-    "suggestion": "Add role=\"note\" or role=\"alert\" to call-out divs",
-    "description": "Call-out div missing ARIA role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"(blue|orange|grey|ink)\"(?![^>]*<span[^>]*class=\"visually-hidden\")",
-    "required": true,
-    "suggestion": "Add visually-hidden span describing the colored section purpose",
-    "description": "Colored margin missing screen reader description"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"tab\"(?![^>]*role=\"tablist\")",
-    "required": true,
-    "suggestion": "Add role=\"tablist\" to tab container",
-    "description": "Tab container missing tablist role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"tabcontent\"(?![^>]*role=\"tabpanel\")",
-    "required": true,
-    "suggestion": "Add role=\"tabpanel\" to tab content containers",
-    "description": "Tab content missing tabpanel role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"tablinks\"(?![^>]*aria-selected=)",
-    "required": false,
-    "suggestion": "Add aria-selected=\"true/false\" to tab buttons",
-    "description": "Tab button missing aria-selected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"flip-card\"(?![^>]*tabindex=)",
-    "required": false,
-    "suggestion": "Add tabindex=\"0\" to make flip cards keyboard accessible",
-    "description": "Flip card missing tabindex for keyboard access"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"flip-card\"(?![^>]*aria-label=)",
-    "required": false,
-    "suggestion": "Add aria-label describing flip card interaction",
-    "description": "Flip card missing aria-label"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "percentage_check",
-    "pattern": "<div[^>]*class=\"(note|warning|important|tip|example|exception|bestPractice|annotation|script|template)\"[^>]*>[\\s\\S]*?</div>",
-    "required": false,
-    "suggestion": "Visual callouts exceed 30% of content; consider restructuring to reduce cognitive load",
-    "description": "Excessive visual callouts detected (>30% of content)"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "percentage_check",
-    "pattern": "<table[^>]*>[\\s\\S]*?</table>",
-    "required": false,
-    "suggestion": "Tables exceed 30% of content; consider using lists or prose for some information",
-    "description": "Excessive table usage detected (>30% of content)"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "percentage_check",
-    "pattern": "<(strong|em|b|i)[^>]*>[^<]+</(strong|em|b|i)>",
-    "required": false,
-    "suggestion": "Text emphasis exceeds 30% of content; reduce highlighting to maintain effectiveness",
-    "description": "Excessive text emphasis detected (>30% of content)"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "combined_percentage_check",
-    "pattern": "(<div[^>]*class=\"(note|warning|important|tip|example|exception|bestPractice|annotation|script|template)\"[^>]*>[\\s\\S]*?</div>|<table[^>]*>[\\s\\S]*?</table>|<(strong|em|b|i)[^>]*>[^<]+</(strong|em|b|i)>)",
-    "required": false,
-    "suggestion": "Combined visual elements (callouts, tables, emphasis) exceed 50% of content; restructure for better readability",
-    "description": "Excessive combined visual elements detected (>50% of content)"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "regex",
-    "pattern": "(<div[^>]*class=\"(note|warning|important|tip|example|exception|bestPractice|annotation|script|template)\"[^>]*>[\\s\\S]*?</div>\\s*){3,}",
-    "required": false,
-    "suggestion": "Three or more consecutive callouts found; consolidate or separate with regular content",
-    "description": "Multiple consecutive callouts reduce effectiveness"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "regex",
-    "pattern": "(<table[^>]*>[\\s\\S]*?</table>\\s*){3,}",
-    "required": false,
-    "suggestion": "Three or more consecutive tables found; consider consolidating or adding explanatory text",
-    "description": "Multiple consecutive tables reduce readability"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "ratio_check",
-    "pattern": "callout_count / paragraph_count > 0.5",
-    "required": false,
-    "suggestion": "Callout-to-paragraph ratio exceeds 0.5; too many callouts dilute their impact",
-    "description": "High callout-to-content ratio detected"
-  },
-  {
-    "category": "content_structure",
-    "checkType": "ratio_check",
-    "pattern": "table_count / total_sections > 0.4",
-    "required": false,
-    "suggestion": "Table-to-section ratio exceeds 0.4; consider alternative content formats",
-    "description": "High table-to-section ratio detected"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "required_tag",
-    "pattern": "<html lang=>",
-    "required": true,
-    "suggestion": "Add lang=\"en\" to <html> element",
-    "description": "Root <html> missing language attribute"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<label(?![^>]*for=)[^>]*>",
-    "required": false,
-    "suggestion": "Add for=\"id\" matching the input ID",
-    "description": "Label missing for= attribute"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<input[^>]*id=['\\\"][^'\\\"]+['\\\"][^>]*>(?![\\s\\S]*<label[^>]*for=['\\\"]\\1['\\\"]>)",
-    "required": false,
-    "suggestion": "Add matching <label for=\"\"> for each input",
-    "description": "Input missing corresponding label"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<input(?![^>]*(aria-label|title|id))[^\\>]*>",
-    "required": false,
-    "suggestion": "Add aria-label/title or label+id",
-    "description": "Form input missing accessible name"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<video(?![^>]*<track[^>]*kind=['\\\"]captions['\\\"])[\\s\\S]*?</video>",
-    "required": false,
-    "suggestion": "Add <track kind=\"captions\"> for videos",
-    "description": "Video missing captions"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<audio(?![^>]*transcript)[\\s\\S]*?</audio>",
-    "required": false,
-    "suggestion": "Provide transcript for audio content",
-    "description": "Audio missing transcript"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<video[^>]*autoplay(?![^>]*muted)",
-    "required": false,
-    "suggestion": "Autoplay videos must also be muted",
-    "description": "Autoplay video without muted attribute"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<audio[^>]*autoplay",
-    "required": false,
-    "suggestion": "Remove autoplay for audio",
-    "description": "Autoplay audio violates accessibility"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<a href=\"#?(?:(?![a-zA-Z0-9_-]).)*\">",
-    "required": false,
-    "suggestion": "Ensure href anchors point to valid IDs",
-    "description": "Invalid internal link anchor"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<div[^>]*tabindex=\"0\"(?![^>]*role=)",
-    "required": false,
-    "suggestion": "Focusable div missing role attribute non-interactive",
-    "description": "Non-interactive element focusable"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<nav(?![^>]*role=\"navigation\")",
-    "required": false,
-    "suggestion": "Add role=\"navigation\" to nav elements",
-    "description": "Missing ARIA role navigation"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<main(?![^>]*role=\"main\")",
-    "required": true,
-    "suggestion": "Add role=\"main\" to <main> region",
-    "description": "Main landmark missing role attribute"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<a class=\"skip-link\"(?![^>]*href=\"#main\")",
-    "required": true,
-    "suggestion": "Skip to content link must point to #main",
-    "description": "Skip-link missing proper target"
-  },
-  {
-    "category": "accessibility",
-    "checkType": "regex",
-    "pattern": "<a class=\"skip-link\">",
-    "required": true,
-    "suggestion": "Add skip-link to top of page",
-    "description": "Missing skip-link for keyboard users"
-  },
-  {
-    "category": "html",
-    "checkType": "required_tag",
-    "pattern": "<meta charset=\"UTF-8\">",
-    "required": true,
-    "suggestion": "Add <meta charset=\"UTF-8\"> to document head",
-    "description": "Missing charset declaration"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<html(?![^>]*lang=)",
-    "required": true,
-    "suggestion": "Add lang=\"en\" to <html> element",
-    "description": "Root <html> missing language attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<html[^>]*lang=\"\"[^>]*>",
-    "required": false,
-    "suggestion": "Specify correct lang attribute value",
-    "description": "Empty lang attribute detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h1>[\\s\\S]*?<h1>",
-    "required": false,
-    "suggestion": "Use only one <h1> per page",
-    "description": "Multiple <h1> elements found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h[3-6]>[\\s\\S]*?<h1>",
-    "required": false,
-    "suggestion": "Do not place lower headings before <h1>",
-    "description": "Heading out of order (content before H1)"
-  },
-  {
-  "category": "html",
-  "checkType": "regex",
-  "pattern": "<h2>.*?</h2>.*?<h4>",
-  "required": false,
-  "suggestion": "Use h3 before h4; maintain heading hierarchy",
-  "description": "Heading hierarchy violated (h2 to h4 skip)"
-},
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h[5]>[\\s\\S]*?<h3>",
-    "required": false,
-    "suggestion": "Do not skip from h3 to h5",
-    "description": "Heading hierarchy violation (h3\u2192h5)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h[6]>[\\s\\S]*?<h4>",
-    "required": false,
-    "suggestion": "Do not skip from h4 to h6",
-    "description": "Heading hierarchy violation (h4\u2192h6)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<h[2-6]>[\\s\\S]*?<h1>",
-    "required": false,
-    "suggestion": "H1 must appear before all other headings",
-    "description": "H1 missing or placed too late"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<hr[^>]*>",
-    "required": false,
-    "suggestion": "Avoid using <hr>; use CSS borders instead",
-    "description": "Non-semantic horizontal rule detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<header>(?![\\s\\S]*?<h1>)",
-    "required": false,
-    "suggestion": "Header must contain an <h1> element",
-    "description": "Header missing page title"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<section>[\\s\\S]*?</section>(?![\\s\\S]*?<h2>)",
-    "required": false,
-    "suggestion": "Each section should begin with an <h2> heading",
-    "description": "Section missing proper heading structure"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<article>[\\s\\S]*?</article>(?![\\s\\S]*?<h2>)",
-    "required": false,
-    "suggestion": "Article content requires heading",
-    "description": "H2 missing from article"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<footer>(?![\\s\\S]*?copyright)",
-    "required": false,
-    "suggestion": "Include copyright statement in footer",
-    "description": "Footer missing copyright text"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table(?![^>]*summary=)(?![^>]*caption)",
-    "required": false,
-    "suggestion": "Add caption or summary describing table content",
-    "description": "Table missing caption and summary"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"container\"(?![^>]*role=)",
-    "required": false,
-    "suggestion": "Add role=\"region\" or semantic element instead of generic container",
-    "description": "Container div missing ARIA role"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<a href=\"#[^\"]+\">(?![\\s\\S]*id=\"[^\"]+\")",
-    "required": false,
-    "suggestion": "Ensure internal links reference existing IDs",
-    "description": "Broken internal anchor reference"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<a[^>]*href=\"\"[^>]*>",
-    "required": false,
-    "suggestion": "Empty href attributes must be removed",
-    "description": "Empty hyperlink reference"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<a[^>]*href=\"[^\"]*\"(?![^>]*rel=\"noopener\")",
-    "required": false,
-    "suggestion": "Add rel=\"noopener\" for links with target=\"_blank\"",
-    "description": "Missing rel=\"noopener\" attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<a[^>]*href=\" \">",
-    "required": false,
-    "suggestion": "Whitespace-only href attribute",
-    "description": "Invalid href attribute"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>\\s*<tr[^>]*>\\s*</tr>",
-    "required": false,
-    "suggestion": "Avoid empty table rows",
-    "description": "Empty table row detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>\\s*<tr[^>]*>\\s*<td[^>]*>\\s*</td>",
-    "required": false,
-    "suggestion": "Avoid empty table cells",
-    "description": "Empty table cell detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<table[^>]*>\\s*(?![\\s\\S]*?<tr)",
-    "required": false,
-    "suggestion": "Table must contain row elements",
-    "description": "Table missing rows"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<thead>(?![\\s\\S]*?</thead>)",
-    "required": false,
-    "suggestion": "Ensure proper <thead> structure",
-    "description": "Malformed thead element"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<ul[^>]*class=\"numbers\">",
-    "required": false,
-    "suggestion": "Do not use custom numbered list classes; use <ol>",
-    "description": "Improper list type (numbers class misuse)"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<li[^>]*style=",
-    "required": false,
-    "suggestion": "Remove inline styles from list items",
-    "description": "Inline style applied to list item"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<td[^>]*colspan=\"1\"",
-    "required": false,
-    "suggestion": "Avoid unnecessary colspan=\"1\" attributes",
-    "description": "Redundant colspan value"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<td[^>]*rowspan=\"1\"",
-    "required": false,
-    "suggestion": "Avoid unnecessary rowspan=\"1\" attributes",
-    "description": "Redundant rowspan value"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*style=\"[^\"]*text-indent",
-    "required": false,
-    "suggestion": "Use CSS classes instead of inline text indentation",
-    "description": "Inline text-indent styling found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*style=\"[^\"]*(left|right):\\s*\\d+px",
-    "required": false,
-    "suggestion": "Do not position layout using inline left/right offsets",
-    "description": "Inline positional offset detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<div[^>]*data-[a-zA-Z-]+=",
-    "required": false,
-    "suggestion": "Remove unapproved data-* attributes",
-    "description": "Unauthorized data attribute found"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<o:p>",
-    "required": false,
-    "suggestion": "Remove MS Office O:P tags",
-    "description": "Detected Microsoft Office markup"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "mso-[a-zA-Z-]+:",
-    "required": false,
-    "suggestion": "Remove MS Office mso-* inline styles",
-    "description": "Microsoft Word styling detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<span[^>]*style=\"[^\"]*mso-",
-    "required": false,
-    "suggestion": "Remove pasted MS Office formatting",
-    "description": "MSO inline formatting detected"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<style[^>]*>(?![\\s\\S]*@media)",
-    "required": false,
-    "suggestion": "Move inline <style> blocks to CSS files",
-    "description": "Inline style block detected in content"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<style>[\\s\\S]*</style>",
-    "required": false,
-    "suggestion": "Do not include <style> in the content body",
-    "description": "Style tags must not appear in content region"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<meta[^>]*http-equiv=['\\\"]pragma['\\\"]",
-    "required": false,
-    "suggestion": "Remove pragma no-cache meta usage",
-    "description": "Deprecated pragma meta tag"
-  },
-  {
-    "category": "html",
-    "checkType": "regex",
-    "pattern": "<script(?![^>]*src=)[^>]*>",
-    "required": false,
-    "suggestion": "Do not include inline <script> tags in content",
-    "description": "Inline script tag found"
-  },
-{
-  "category": "css",
-  "checkType": "regex",
-  "pattern": "<div[^>]*class=['\"][^'\"]*WatsonSOPBody[^'\"]*['\"][^>]*>[\\s\\S]*?style=['\"][^'\"]+['\"]",
-  "required": true,
-  "suggestion": "Remove inline styles from elements inside div.WatsonSOPBody. Use externally linked standardized CSS instead.",
-  "description": "Inline styles detected inside WatsonSOPBody"
-},
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})",
-    "required": false,
-    "suggestion": "Use Watson brand color variables instead of hex codes",
-    "description": "Hard-coded hex color value detected"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "rgb\\([^)]*\\)",
-    "required": false,
-    "suggestion": "Use Watson brand color variables instead of rgb()",
-    "description": "Hard-coded rgb() color detected"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "hsl\\([^)]*\\)",
-    "required": false,
-    "suggestion": "Use Watson brand color variables instead of hsl()",
-    "description": "Hard-coded hsl() color detected"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "font-family\\s*:\\s*(Arial|Calibri|Times New Roman|Roboto|Segoe UI)",
-    "required": true,
-    "suggestion": "Use Amazon Ember as the approved font",
-    "description": "Non-approved font family detected"
-  },
-  {
-    "category": "css",
-    "checkType": "forbidden_property",
-    "pattern": "font\\s*:\\s*[^;]*\\bArial\\b",
-    "required": true,
-    "suggestion": "Remove MS Word default font formatting",
-    "description": "MS Word font usage detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "[0-9]+px",
-    "required": true,
-    "suggestion": "Use relative units ",
-    "description": "Fixed pixel value used where not permitted"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "margin-(left|right|top|bottom)\\s*:\\s*\\d+px",
-    "required": false,
-    "suggestion": "Use CSS layout classes instead of fixed margins",
-    "description": "Fixed margin detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "padding-(left|right|top|bottom)\\s*:\\s*\\d+px",
-    "required": false,
-    "suggestion": "Use CSS spacing utilities instead of fixed padding",
-    "description": "Fixed padding detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "width\\s*:\\s*\\d+px",
-    "required": false,
-    "suggestion": "Use responsive width values (%auto)",
-    "description": "Fixed width detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "height\\s*:\\s*\\d+px",
-    "required": false,
-    "suggestion": "Avoid fixed heights; use min-height or auto",
-    "description": "Fixed height detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "position\\s*:\\s*absolute",
-    "required": true,
-    "suggestion": "Avoid absolute positioning unless essential",
-    "description": "Absolute positioning may break layout"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "position\\s*:\\s*fixed",
-    "required": false,
-    "suggestion": "Avoid fixed positioning in SOP content",
-    "description": "Fixed positioning detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "top\\s*:\\s*\\d+px|left\\s*:\\s*\\d+px|right\\s*:\\s*\\d+px|bottom\\s*:\\s*\\d+px",
-    "required": false,
-    "suggestion": "Do not manually place elements using offsets",
-    "description": "Manual offset positioning detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "transition\\s*:\\s*[^;]*(?<!none)",
-    "required": true,
-    "suggestion": "Ensure transitions include prefers-reduced-motion",
-    "description": "Transition animation missing reduced-motion fallback"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "animation\\s*:\\s*(?!none)[^;]*",
-    "required": true,
-    "suggestion": "Ensure animations include prefers-reduced-motion",
-    "description": "Animation missing reduced-motion compliance"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "@keyframes",
-    "required": true,
-    "suggestion": "Verify keyframes also support reduced motion",
-    "description": "Motion keyframes detected; check compliance"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "filter\\s*:\\s*blur",
-    "required": false,
-    "suggestion": "Blur effects reduce readability",
-    "description": "Blur CSS filter detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "opacity\\s*:\\s*0(\\.\\d+)?",
-    "required": false,
-    "suggestion": "Do not hide content visually; use aria-hidden if appropriate",
-    "description": "Opacity used to hide elements"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "box-shadow\\s*:\\s*[^;]*0\\s+0\\s+0",
-    "required": false,
-    "suggestion": "Use meaningful shadows or remove entirely",
-    "description": "Zero-value shadow detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "text-shadow\\s*:\\s*[^;]*",
-    "required": false,
-    "suggestion": "Avoid text-shadow; reduces accessibility",
-    "description": "Text shadow detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "display\\s*:\\s*table",
-    "required": true,
-    "suggestion": "Use layout grid classes instead of CSS display:table",
-    "description": "Table-based layout CSS detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "display\\s*:\\s*table-cell",
-    "required": true,
-    "suggestion": "Use flex/grid instead of table cells",
-    "description": "Table-cell CSS layout detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "overflow\\s*:\\s*hidden",
-    "required": true,
-    "suggestion": "Ensure focus outlines are not clipped",
-    "description": "Overflow hidden may clip focus outlines"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "overflow-x\\s*:\\s*scroll",
-    "required": true,
-    "suggestion": "Avoid horizontal scrolling in SOP content",
-    "description": "Horizontal scroll detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "overflow-y\\s*:\\s*scroll",
-    "required": false,
-    "suggestion": "Verify content container is intended for scrolling",
-    "description": "Vertical scroll container detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "background-image\\s*:\\s*url",
-    "required": true,
-    "suggestion": "Background images should not be used in SOP content",
-    "description": "Background image detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "cursor\\s*:\\s*(wait|progress|none)",
-    "required": false,
-    "suggestion": "Do not override default cursors",
-    "description": "CSS cursor override detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "mso-[a-zA-Z-]+:",
-    "required": true,
-    "suggestion": "Remove Microsoft Office CSS artifacts",
-    "description": "MS Word styling found in CSS"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "webkit-margin",
-    "required": true,
-    "suggestion": "Remove browser-specific pasted formatting",
-    "description": "Copy-paste vendor CSS detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "ms-grid",
-    "required": true,
-    "suggestion": "Avoid legacy MS grid syntax",
-    "description": "Deprecated Microsoft grid detected"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.dark-mode[^}]*color\\s*:\\s*(white|#fff)",
-    "required": true,
-    "suggestion": "Ensure dark-mode text has sufficient contrast",
-    "description": "Dark-mode text color too light"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.dark-mode[^}]*background[^}]*:\\s*(black|#000)",
-    "required": true,
-    "suggestion": "Ensure dark-mode backgrounds meet contrast standards",
-    "description": "Dark-mode background too dark without contrast balancing"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "\\.dark-mode(?![^}]*--)",
-    "required": false,
-    "suggestion": "Ensure dark-mode uses CSS variables",
-    "description": "Dark-mode class missing CSS variable usage"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "@media\\s*\\(min-width:\\s*1024px\\)",
-    "required": true,
-    "suggestion": "Ensure layout supports large screens",
-    "description": "Missing large-screen breakpoint"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "@media\\s*\\(max-width:\\s*480px\\)",
-    "required": true,
-    "suggestion": "Ensure layout supports mobile devices",
-    "description": "Missing mobile breakpoint"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "grid-template-columns\\s*:\\s*repeat\\(11fr\\)",
-    "required": false,
-    "suggestion": "Ensure multi-column layouts where appropriate",
-    "description": "Grid using single column unnecessarily"
-  },
-  {
-    "category": "css",
-    "checkType": "regex",
-    "pattern": "flex-direction\\s*:\\s*column(?![^}]*@media)",
-    "required": true,
-    "suggestion": "Ensure vertical flex layouts have responsive breakpoints",
-    "description": "Column flex layout missing responsive variant"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*aria-controls=['\\\"]([^'\\\"]+)['\\\"](?![\\s\\S]*id=['\\\"]\\1['\\\"])",
-    "required": false,
-    "suggestion": "Ensure aria-controls target ID exists",
-    "description": "aria-controls references a missing ID"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "id=['\\\"]([^'\\\"]+)['\\\"](?![\\s\\S]*aria-controls=['\\\"]\\1['\\\"])",
-    "required": false,
-    "suggestion": "Ensure all collapsible regions are controlled by a button",
-    "description": "Region missing corresponding controls"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button(?![^>]*role=['\\\"]button['\\\"])",
-    "required": true,
-    "suggestion": "Add role=\"button\" or <button> element for clickable items",
-    "description": "Clickable element missing button role"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "(<div[^>]*role=['\\\"]button['\\\"])(?![^>]*tabindex=\"0\")",
-    "required": true,
-    "suggestion": "Add tabindex=\"0\" to role=\"button\" items",
-    "description": "Div button missing keyboard focusability"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "role=['\\\"]button['\\\"](?![\\s\\S]*onkeydown)",
-    "required": true,
-    "suggestion": "Add keyboard handlers for Space/Enter",
-    "description": "Custom button missing keyboard activation"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"collapsible\"(?![^>]*aria-expanded=)",
-    "required": true,
-    "suggestion": "Add aria-expanded to collapsible buttons",
-    "description": "Collapsible missing expanded state"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"collapsible\"(?![^>]*aria-controls=)",
-    "required": true,
-    "suggestion": "Add aria-controls referencing controlled panel",
-    "description": "Collapsible missing aria-controls"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"collapsible-content\"(?![^>]*id=)",
-    "required": true,
-    "suggestion": "Add unique ID for collapsible content",
-    "description": "Collapsible content missing ID"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"collapsible\"[^>]*aria-controls=['\\\"]([^'\\\"]+)['\\\"]>(?![\\s\\S]*?<div[^>]*id=['\\\"]\\1['\\\"])",
-    "required": true,
-    "suggestion": "aria-controls must match collapsible panel ID",
-    "description": "Mismatched aria-controls/ID binding"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]tablist['\\\"](?![^>]*aria-orientation)",
-    "required": true,
-    "suggestion": "Add aria-orientation=\"horizontal\" or \"vertical\"",
-    "description": "Tablist missing orientation"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*class=\"tablinks\"(?![^>]*role=['\\\"]tab['\\\"])",
-    "required": true,
-    "suggestion": "Add role=\"tab\" to tab buttons",
-    "description": "Tab button missing tab role"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*role=['\\\"]tab['\\\"](?![^>]*aria-selected)",
-    "required": true,
-    "suggestion": "Add aria-selected=\"true/false\" to tabs",
-    "description": "Tab missing aria-selected state"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"tabcontent\"(?![^>]*role=['\\\"]tabpanel['\\\"])",
-    "required": true,
-    "suggestion": "Add role=\"tabpanel\" to tab panels",
-    "description": "Tab content missing panel role"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "role=['\\\"]tab['\\\"](?![\\s\\S]*id=)",
-    "required": true,
-    "suggestion": "Add unique ID for each tab",
-    "description": "Tab requires unique ID"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "role=['\\\"]tabpanel['\\\"](?![\\s\\S]*aria-labelledby=)",
-    "required": true,
-    "suggestion": "Each tabpanel needs aria-labelledby",
-    "description": "Tabpanel missing label linkage"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*role=['\\\"]tab['\\\"](?![^>]*aria-controls)",
-    "required": true,
-    "suggestion": "Add aria-controls to tabs to link to associated panel",
-    "description": "Tab missing aria-controls"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]dialog['\\\"](?![^>]*aria-modal=)",
-    "required": true,
-    "suggestion": "Add aria-modal=\"true\" to dialogs",
-    "description": "Dialog missing modal attribute"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]dialog['\\\"](?![^>]*aria-labelledby=)",
-    "required": true,
-    "suggestion": "Add aria-labelledby referencing dialog title",
-    "description": "Dialog missing label"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]dialog['\\\"](?![^>]*tabindex=\"0\")",
-    "required": true,
-    "suggestion": "Make dialog focusable for trapping",
-    "description": "Dialog missing focusability"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]dialog['\\\"](?![\\s\\S]*<button[^>]*class=\"close\")",
-    "required": false,
-    "suggestion": "Dialogs must include a close button",
-    "description": "Dialog close button missing"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"tooltip\"(?![^>]*role=\"tooltip\")",
-    "required": true,
-    "suggestion": "Add role=\"tooltip\" for tooltips",
-    "description": "Tooltip missing ARIA role"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*role=['\\\"]tooltip['\\\"](?![^>]*id=)",
-    "required": true,
-    "suggestion": "Add unique ID to tooltip",
-    "description": "Tooltip missing ID"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "aria-describedby=['\\\"]([^'\\\"]+)['\\\"](?![\\s\\S]*id=['\\\"]\\1['\\\"])",
-    "required": false,
-    "suggestion": "aria-describedby must reference a real element",
-    "description": "Broken aria-describedby reference"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"modal\"(?![^>]*role=['\\\"]dialog['\\\"])",
-    "required": true,
-    "suggestion": "Modal containers must use role=\"dialog\"",
-    "description": "Modal missing dialog role"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"flip-card\"(?![^>]*tabindex=\"0\")",
-    "required": true,
-    "suggestion": "Make flip-cards keyboard accessible",
-    "description": "Flip card missing tabindex"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"flip-card\"(?![^>]*aria-label=)",
-    "required": true,
-    "suggestion": "Add aria-label describing interactive nature",
-    "description": "Flip card missing aria-label"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<div[^>]*class=\"flip-card\"(?![\\s\\S]*onkeydown)",
-    "required": false,
-    "suggestion": "Add keyboard arrow/Enter support for flip cards",
-    "description": "Flip card missing keyboard interaction"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<button[^>]*(onclick|onmouseover|onfocus|onkeydown)=",
-    "required": false,
-    "suggestion": "Move inline event handlers to JS files",
-    "description": "Inline event handler detected"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "document\\.write",
-    "required": true,
-    "suggestion": "Avoid using document.write in SOP content",
-    "description": "Prohibited JS API detected"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "alert\\(|prompt\\(|confirm\\(",
-    "required": false,
-    "suggestion": "Remove debug or blocking JS calls",
-    "description": "Debug JS calls detected"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "const\\s+[A-Za-z]+\\s*=\\s*document\\.querySelectorAll\\(['\\\"][^'\\\"]+['\\\"]\\)",
-    "required": false,
-    "suggestion": "Ensure querySelectorAll has a length check before iteration",
-    "description": "querySelectorAll used unsafely"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "getElementById\\([^)]*\\)(?![\\s\\S]*addEventListener)",
-    "required": false,
-    "suggestion": "Ensure elements retrieved by ID have event listeners or logic",
-    "description": "Unused DOM reference detected"
-  },
-  {
-    "category": "interactive",
-    "checkType": "regex",
-    "pattern": "<script(?![^>]*src=)[^>]*>",
-    "required": false,
-    "suggestion": "Inline script blocks not allowed in body",
-    "description": "Inline script block found"
-  }
-];
 })();
