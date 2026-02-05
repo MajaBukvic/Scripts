@@ -1,12 +1,11 @@
 // ==UserScript==
-// @name         Ajuda Locale Selector (Auto + Manual)
+// @name         Ajuda Locale Selector
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Auto-select or manually select target locales for translation batches
+// @version      1
+// @description  Auto-select target locales for translation batches
 // @author       MajaBukvic
 // @match        https://ajuda.a2z.com/*
 // @grant        unsafeWindow
-// @grant        GM_log
 // ==/UserScript==
 
 (function() {
