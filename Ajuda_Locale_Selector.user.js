@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ajuda Locale Selector
 // @namespace    http://tampermonkey.net/
-// @version      1
+// @version      2.2
 // @description  Auto-select target locales for translation batches
 // @author       MajaBukvic
 // @match        https://ajuda.a2z.com/*
@@ -12,7 +12,7 @@
     'use strict';
 
     const SCRIPT_NAME = 'Ajuda Locale Selector';
-    const SCRIPT_VERSION = '2.1';
+    const SCRIPT_VERSION = '2.2';
     let isInitialized = false;
 
     // ========================================
@@ -539,7 +539,7 @@
                         'FR': ['fr-FR'],
                         'IE': [],
                         'IN': ['hi-IN', 'bn-IN', 'kn-IN', 'ml-IN', 'mr-IN', 'ta-IN', 'te-IN'],
-                        'IT': ['it-IT'],
+                                                'IT': ['it-IT'],
                         'JP': ['ja-JP', 'zh-CN'],
                         'MX': ['es-MX'],
                         'NL': ['nl-NL'],
@@ -1119,10 +1119,11 @@
     let selectedVertical = null;
     let selectedFunction = null;
     let manualLayerLocaleSelections = {};
+    let batchLayerLocaleSelections = {}; // NEW: For batch mode
     let isProcessing = false;
     let stopRequested = false;
     let modalObserver = null;
-    let currentMode = 'auto'; // 'auto' or 'manual'
+    let currentMode = 'auto'; // 'auto', 'manual', or 'batch'
 
     // ========================================
     // UTILITY FUNCTIONS
@@ -1154,6 +1155,9 @@
     function getLocalesForLayer(layer) {
         if (currentMode === 'manual') {
             return manualLayerLocaleSelections[layer] || [];
+        }
+        if (currentMode === 'batch') {
+            return batchLayerLocaleSelections[layer] || [];
         }
         if (!selectedFunction || !selectedFunction.layerLocales) {
             return [];
@@ -1196,6 +1200,93 @@
             console.error('[Locale Selector] Error loading from storage:', e);
             manualLayerLocaleSelections = {};
         }
+    }
+
+    // ========================================
+    // BATCH CALCULATION FUNCTIONS (NEW)
+    // ========================================
+
+    /**
+     * Calculate batch selections for a given function's layer-locale mapping
+     * @param {Object} layerLocales - The mapping of layers to their locales
+     * @returns {Object} - { batch1: {layer: [locales]}, batch2: {layer: [locales]}, primaryLayer: string, stats: {} }
+     */
+    function calculateBatchSelections(layerLocales) {
+        // Filter out layers with no locales
+        const validLayers = Object.entries(layerLocales)
+            .filter(([layer, locales]) => locales && locales.length > 0);
+
+        if (validLayers.length === 0) {
+            return {
+                batch1: {},
+                batch2: {},
+                primaryLayer: null,
+                stats: { batch1Locales: 0, batch2Locales: 0, totalUniqueLocales: 0 }
+            };
+        }
+
+        // Find the layer with the most locales (primary layer)
+        let primaryLayer = null;
+        let maxLocales = 0;
+
+        for (const [layer, locales] of validLayers) {
+            if (locales.length > maxLocales) {
+                maxLocales = locales.length;
+                primaryLayer = layer;
+            }
+        }
+
+        const batch1 = {};
+        const batch2 = {};
+        const coveredLocales = new Set();
+
+        // Batch 1: Primary layer gets ALL its locales
+        batch1[primaryLayer] = [...layerLocales[primaryLayer]];
+        layerLocales[primaryLayer].forEach(locale => coveredLocales.add(locale));
+
+        // For other layers, only include locales NOT already covered
+        for (const [layer, locales] of validLayers) {
+            if (layer === primaryLayer) continue;
+
+            const batch1Locales = [];
+            const batch2Locales = [];
+
+            for (const locale of locales) {
+                if (!coveredLocales.has(locale)) {
+                    // This locale is unique - goes to batch 1
+                    batch1Locales.push(locale);
+                    coveredLocales.add(locale);
+                } else {
+                    // This locale is a duplicate - goes to batch 2
+                    batch2Locales.push(locale);
+                }
+            }
+
+            if (batch1Locales.length > 0) {
+                batch1[layer] = batch1Locales;
+            }
+            if (batch2Locales.length > 0) {
+                batch2[layer] = batch2Locales;
+            }
+        }
+
+        // Calculate stats
+        let batch1Count = 0;
+        let batch2Count = 0;
+        Object.values(batch1).forEach(locales => batch1Count += locales.length);
+        Object.values(batch2).forEach(locales => batch2Count += locales.length);
+
+        return {
+            batch1,
+            batch2,
+            primaryLayer,
+            stats: {
+                batch1Locales: batch1Count,
+                batch2Locales: batch2Count,
+                totalUniqueLocales: coveredLocales.size,
+                primaryLayerCount: layerLocales[primaryLayer]?.length || 0
+            }
+        };
     }
 
     // ========================================
@@ -1277,10 +1368,6 @@
     // KEY FIX: ROBUST LOCALE CLEARING AND SELECTION
     // ========================================
 
-    /**
-     * Gets the current state of the multiselect button
-     * Returns the text showing what's selected (e.g., "None selected", "bn-IN", "3 selected")
-     */
     function getMultiselectButtonState(form) {
         const btn = form.querySelector('.multiselect.dropdown-toggle');
         if (!btn) return null;
@@ -1288,10 +1375,6 @@
         return textSpan ? textSpan.textContent.trim() : btn.getAttribute('title') || '';
     }
 
-    /**
-     * Waits for the multiselect button to show "None selected"
-     * Returns true if successful, false if timeout
-     */
     async function waitForClearedState(form, maxWaitMs = 5000) {
         const startTime = Date.now();
         while (Date.now() - startTime < maxWaitMs) {
@@ -1305,9 +1388,6 @@
         return false;
     }
 
-    /**
-     * Clears all selected locales in the dropdown and verifies the clear was successful
-     */
     async function clearAllLocalesInDropdown(form) {
         const multiselectBtn = form.querySelector('.multiselect.dropdown-toggle');
         if (!multiselectBtn) {
@@ -1315,21 +1395,17 @@
             return false;
         }
 
-        // Check current state
         let currentState = getMultiselectButtonState(form);
         console.log(`[Locale Selector] Initial state before clearing: "${currentState}"`);
 
-        // If already cleared, we're done
         if (currentState === 'None selected' || currentState === '') {
             console.log('[Locale Selector] Already cleared, no action needed');
             return true;
         }
 
-        // Open dropdown
         simulateClick(multiselectBtn);
         await sleep(300);
 
-        // Find the dropdown
         let dropdown = document.querySelector('.multiselect-container.dropdown-menu.show') ||
                        document.querySelector('.multiselect-container.dropdown-menu:not([style*="display: none"])') ||
                        document.querySelector('.multiselect-container.dropdown-menu');
@@ -1339,7 +1415,6 @@
             return false;
         }
 
-        // Try to find and click "Deselect All" button first
         const deselectAllBtn = dropdown.querySelector('button.multiselect-deselect-all') ||
                                dropdown.querySelector('.deselect-all') ||
                                dropdown.querySelector('[data-action="deselect-all"]') ||
@@ -1353,18 +1428,15 @@
             await sleep(300);
         }
 
-        // Now manually uncheck all checked checkboxes
         let maxAttempts = 50;
         let attempt = 0;
 
         while (attempt < maxAttempts) {
-            // Re-query the dropdown (it may have been recreated)
             dropdown = document.querySelector('.multiselect-container.dropdown-menu.show') ||
                        document.querySelector('.multiselect-container.dropdown-menu:not([style*="display: none"])') ||
                        document.querySelector('.multiselect-container.dropdown-menu');
 
             if (!dropdown) {
-                // Dropdown closed, reopen it
                 simulateClick(multiselectBtn);
                 await sleep(200);
                 dropdown = document.querySelector('.multiselect-container.dropdown-menu.show') ||
@@ -1380,7 +1452,6 @@
                 break;
             }
 
-            // Click ONE checkbox at a time to avoid React batching issues
             const checkbox = checkedBoxes[0];
             const label = checkbox.closest('label') || checkbox.closest('li');
             if (label) {
@@ -1393,11 +1464,9 @@
             attempt++;
         }
 
-        // Close the dropdown
         simulateClick(multiselectBtn);
         await sleep(200);
 
-        // Verify the state is cleared
         const finalState = getMultiselectButtonState(form);
         console.log(`[Locale Selector] State after clearing: "${finalState}"`);
 
@@ -1406,10 +1475,8 @@
             return true;
         }
 
-        // If still not cleared, try one more aggressive approach
         console.log('[Locale Selector] First clear attempt failed, trying aggressive clear...');
 
-        // Reopen dropdown
         simulateClick(multiselectBtn);
         await sleep(300);
 
@@ -1417,7 +1484,6 @@
                    document.querySelector('.multiselect-container.dropdown-menu');
 
         if (dropdown) {
-            // Click all checked checkboxes rapidly
             const allChecked = dropdown.querySelectorAll('input[type="checkbox"]:checked');
             for (const cb of allChecked) {
                 const label = cb.closest('label') || cb.closest('li');
@@ -1426,7 +1492,6 @@
             }
         }
 
-        // Close and verify
         simulateClick(multiselectBtn);
         await sleep(300);
 
@@ -1437,9 +1502,6 @@
         return success;
     }
 
-    /**
-     * Main function to select target locales - with proper clearing first
-     */
     async function selectTargetLocales(locales) {
         const form = document.querySelector('.cms-key-input');
         if (!form) {
@@ -1453,7 +1515,6 @@
             return false;
         }
 
-        // STEP 1: Clear all existing selections first
         console.log('[Locale Selector] Step 1: Clearing existing selections...');
         const cleared = await clearAllLocalesInDropdown(form);
 
@@ -1461,10 +1522,8 @@
             console.log('[Locale Selector] Warning: Could not verify clear state, proceeding anyway...');
         }
 
-        // Wait a moment for the UI to stabilize
         await sleep(200);
 
-        // Verify we're starting from clean state
         const preSelectState = getMultiselectButtonState(form);
         console.log(`[Locale Selector] State before selecting new locales: "${preSelectState}"`);
 
@@ -1472,7 +1531,6 @@
             console.log('[Locale Selector] WARNING: State is not cleared! Attempting to continue anyway...');
         }
 
-        // STEP 2: Open dropdown and select new locales
         console.log(`[Locale Selector] Step 2: Selecting ${locales.length} locales: ${locales.join(', ')}`);
 
         simulateClick(multiselectBtn);
@@ -1487,7 +1545,6 @@
             return false;
         }
 
-        // Double-check: uncheck any remaining checked boxes before selecting new ones
         const remainingChecked = dropdown.querySelectorAll('input[type="checkbox"]:checked');
         if (remainingChecked.length > 0) {
             console.log(`[Locale Selector] Found ${remainingChecked.length} still checked, clearing them...`);
@@ -1499,16 +1556,14 @@
             await sleep(200);
         }
 
-        // Now select only the locales we need
         let selectedCount = 0;
         for (const locale of locales) {
-            // Re-query dropdown in case it changed
             dropdown = document.querySelector('.multiselect-container.dropdown-menu.show') ||
                        document.querySelector('.multiselect-container.dropdown-menu');
 
             if (!dropdown) {
                 console.log('[Locale Selector] Dropdown closed unexpectedly, reopening...');
-                simulateClick(multiselectBtn);
+                                simulateClick(multiselectBtn);
                 await sleep(200);
                 dropdown = document.querySelector('.multiselect-container.dropdown-menu');
             }
@@ -1530,11 +1585,9 @@
             }
         }
 
-        // Close the dropdown
         simulateClick(multiselectBtn);
         await sleep(200);
 
-        // Verify final state
         const finalState = getMultiselectButtonState(form);
         console.log(`[Locale Selector] Final state after selection: "${finalState}" (selected ${selectedCount} locales)`);
 
@@ -1556,6 +1609,14 @@
             const hasSelections = Object.values(manualLayerLocaleSelections).some(locales => locales && locales.length > 0);
             if (!hasSelections) {
                 showNotification('No locales selected. Please select at least one locale for a layer.', 'warning');
+                return;
+            }
+        }
+
+        if (currentMode === 'batch') {
+            const hasSelections = Object.values(batchLayerLocaleSelections).some(locales => locales && locales.length > 0);
+            if (!hasSelections) {
+                showNotification('No locales in batch selection. Please configure batch settings.', 'warning');
                 return;
             }
         }
@@ -1625,7 +1686,7 @@
                 }
 
                 simulateClick(pencilIcon);
-                await sleep(800); // Increased wait for form to load
+                await sleep(800);
 
                 // Select locales (this now includes proper clearing)
                 const success = await selectTargetLocales(locales);
@@ -1768,13 +1829,22 @@
         manualButton.style.cssText = 'font-weight: bold; padding: 10px 20px;';
         manualButton.addEventListener('click', showManualSelectorDialog);
 
+        // NEW: Batch Select Button
+        const batchButton = document.createElement('button');
+        batchButton.id = 'localeBatchSelectBtn';
+        batchButton.innerHTML = '📦 Select by Batch';
+        batchButton.className = 'btn btn-info';
+        batchButton.style.cssText = 'font-weight: bold; padding: 10px 20px;';
+        batchButton.addEventListener('click', showBatchSelectorDialog);
+
         // Help Text
         const helpText = document.createElement('span');
         helpText.style.cssText = 'color: white; font-size: 12px; margin-left: 10px;';
-        helpText.textContent = 'Select target locales automatically by function or manually per layer';
+        helpText.textContent = 'Select target locales: Auto (by function), Manual (per layer), or Batch (unique/duplicate split)';
 
         container.appendChild(autoButton);
         container.appendChild(manualButton);
+        container.appendChild(batchButton);
         container.appendChild(helpText);
 
         const publishTable = document.querySelector('#publish-table');
@@ -1946,6 +2016,294 @@
         updateFunctionOptions();
 
         document.getElementById('applyLocalesBtn').addEventListener('click', () => {
+            closeDialog();
+            setTimeout(() => processAllRows(), 100);
+        });
+
+        document.getElementById('closeDialogBtn').addEventListener('click', closeDialog);
+        overlay.addEventListener('click', closeDialog);
+
+        function closeDialog() {
+            document.getElementById('localeConfigDialog')?.remove();
+            document.getElementById('localeConfigOverlay')?.remove();
+        }
+    }
+
+    // ========================================
+    // BATCH SELECTOR DIALOG (NEW)
+    // ========================================
+
+    function showBatchSelectorDialog() {
+        currentMode = 'batch';
+
+        const existingDialog = document.getElementById('localeConfigDialog');
+        if (existingDialog) existingDialog.remove();
+        const existingOverlay = document.getElementById('localeConfigOverlay');
+        if (existingOverlay) existingOverlay.remove();
+
+        const savedVertical = localStorage.getItem('localeSelector_batch_vertical') || 'TSI';
+        const savedFunction = localStorage.getItem('localeSelector_batch_function');
+        const savedBatch = localStorage.getItem('localeSelector_batch_number') || '1';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'localeConfigOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 10000;
+        `;
+
+        const dialog = document.createElement('div');
+        dialog.id = 'localeConfigDialog';
+        dialog.style.cssText = `
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            z-index: 10001;
+            min-width: 600px;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+        `;
+
+        dialog.innerHTML = `
+            <h3 style="margin: 0 0 20px 0; color: #333; border-bottom: 3px solid #17a2b8; padding-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 24px;">📦</span>
+                Batch Locale Selector
+            </h3>
+
+            <div style="background: #e7f3ff; border: 1px solid #b8daff; border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 13px;">
+                <strong>ℹ️ How Batch Selection Works:</strong>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+                    <li><strong>Batch 1:</strong> Primary layer (most locales) gets ALL locales. Other layers get only UNIQUE locales not covered by the primary layer.</li>
+                    <li><strong>Batch 2:</strong> All remaining "duplicate" locale-layer combinations.</li>
+                </ul>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                <div>
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #444;">
+                        Select Vertical:
+                    </label>
+                    <select id="batchVerticalSelect" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px;">
+                        ${Object.entries(VERTICAL_CONFIGS).map(([key, config]) =>
+                            `<option value="${key}" ${savedVertical === key ? 'selected' : ''}>${config.name}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #444;">
+                        Select Function:
+                    </label>
+                    <select id="batchFunctionSelect" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px;">
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #444;">
+                    Select Batch:
+                </label>
+                <div style="display: flex; gap: 15px;">
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 12px 20px; border: 2px solid #17a2b8; border-radius: 6px; cursor: pointer; flex: 1; justify-content: center; background: ${savedBatch === '1' ? '#17a2b8' : 'white'}; color: ${savedBatch === '1' ? 'white' : '#333'};" id="batch1Label">
+                        <input type="radio" name="batchNumber" value="1" ${savedBatch === '1' ? 'checked' : ''} style="display: none;">
+                        <span style="font-size: 20px;">1️⃣</span>
+                        <span><strong>Batch 1</strong><br><small>Unique locales</small></span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 12px 20px; border: 2px solid #17a2b8; border-radius: 6px; cursor: pointer; flex: 1; justify-content: center; background: ${savedBatch === '2' ? '#17a2b8' : 'white'}; color: ${savedBatch === '2' ? 'white' : '#333'};" id="batch2Label">
+                        <input type="radio" name="batchNumber" value="2" ${savedBatch === '2' ? 'checked' : ''} style="display: none;">
+                        <span style="font-size: 20px;">2️⃣</span>
+                        <span><strong>Batch 2</strong><br><small>Duplicate locales</small></span>
+                    </label>
+                </div>
+            </div>
+
+            <div id="batchStatsContainer" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <strong style="color: #333;">📊 Batch Statistics:</strong>
+                    <span id="primaryLayerInfo" style="color: #17a2b8; font-weight: bold;"></span>
+                </div>
+                <div id="batchStats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;">
+                </div>
+            </div>
+
+            <div id="batchPreview" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                <strong style="color: #333; display: block; margin-bottom: 10px;">📋 Selected Batch Mappings:</strong>
+                <div id="batchMappingsList" style="max-height: 250px; overflow-y: auto; font-size: 12px; font-family: 'Consolas', monospace;"></div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 25px; flex-wrap: wrap;">
+                <button id="applyBatchBtn" style="
+                    padding: 14px 30px;
+                    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: bold;
+                ">
+                    ✓ Apply Batch Selection
+                </button>
+                <button id="closeDialogBtn" style="
+                    padding: 14px 30px;
+                    background: #f8f9fa;
+                    color: #333;
+                    border: 2px solid #ddd;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                ">
+                    Cancel
+                </button>
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; font-size: 11px; color: #888; text-align: center;">
+                ${SCRIPT_NAME} v${SCRIPT_VERSION}
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(dialog);
+
+        const verticalSelect = document.getElementById('batchVerticalSelect');
+        const functionSelect = document.getElementById('batchFunctionSelect');
+        const batch1Label = document.getElementById('batch1Label');
+        const batch2Label = document.getElementById('batch2Label');
+
+        let currentBatchData = null;
+
+        function updateBatchRadioStyles() {
+            const selectedBatch = document.querySelector('input[name="batchNumber"]:checked')?.value || '1';
+            batch1Label.style.background = selectedBatch === '1' ? '#17a2b8' : 'white';
+            batch1Label.style.color = selectedBatch === '1' ? 'white' : '#333';
+            batch2Label.style.background = selectedBatch === '2' ? '#17a2b8' : 'white';
+            batch2Label.style.color = selectedBatch === '2' ? 'white' : '#333';
+        }
+
+        function updateFunctionOptions() {
+            const vertical = VERTICAL_CONFIGS[verticalSelect.value];
+            functionSelect.innerHTML = '';
+
+            Object.entries(vertical.functions).forEach(([key, func]) => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = func.name;
+                if (savedFunction === key && savedVertical === verticalSelect.value) {
+                    option.selected = true;
+                }
+                functionSelect.appendChild(option);
+            });
+
+            updateBatchPreview();
+        }
+
+        function updateBatchPreview() {
+            const vertical = VERTICAL_CONFIGS[verticalSelect.value];
+            const func = vertical.functions[functionSelect.value];
+            const selectedBatch = document.querySelector('input[name="batchNumber"]:checked')?.value || '1';
+
+            if (!func || !func.layerLocales) {
+                document.getElementById('batchMappingsList').innerHTML = '<em>No function selected</em>';
+                return;
+            }
+
+            // Calculate batch selections
+            currentBatchData = calculateBatchSelections(func.layerLocales);
+
+            // Update stats
+            const statsContainer = document.getElementById('batchStats');
+            const primaryInfo = document.getElementById('primaryLayerInfo');
+
+            primaryInfo.textContent = currentBatchData.primaryLayer ?
+                `Primary Layer: ${currentBatchData.primaryLayer} (${currentBatchData.stats.primaryLayerCount} locales)` :
+                'No primary layer';
+
+            statsContainer.innerHTML = `
+                <div style="padding: 10px; background: ${selectedBatch === '1' ? '#d4edda' : '#f8f9fa'}; border-radius: 6px; border: 2px solid ${selectedBatch === '1' ? '#28a745' : '#dee2e6'};">
+                    <div style="font-size: 24px; font-weight: bold; color: #28a745;">${currentBatchData.stats.batch1Locales}</div>
+                    <div style="font-size: 11px; color: #666;">Batch 1 Locales</div>
+                </div>
+                <div style="padding: 10px; background: ${selectedBatch === '2' ? '#fff3cd' : '#f8f9fa'}; border-radius: 6px; border: 2px solid ${selectedBatch === '2' ? '#ffc107' : '#dee2e6'};">
+                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;">${currentBatchData.stats.batch2Locales}</div>
+                    <div style="font-size: 11px; color: #666;">Batch 2 Locales</div>
+                </div>
+                <div style="padding: 10px; background: #e7f3ff; border-radius: 6px; border: 2px solid #b8daff;">
+                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;">${currentBatchData.stats.totalUniqueLocales}</div>
+                    <div style="font-size: 11px; color: #666;">Total Unique</div>
+                </div>
+            `;
+
+            // Update mappings list
+            const mappingsList = document.getElementById('batchMappingsList');
+            const batchToShow = selectedBatch === '1' ? currentBatchData.batch1 : currentBatchData.batch2;
+
+            if (Object.keys(batchToShow).length === 0) {
+                mappingsList.innerHTML = `<div style="padding: 20px; text-align: center; color: #666;">
+                    <em>No locales in Batch ${selectedBatch}</em>
+                </div>`;
+            } else {
+                const mappings = Object.entries(batchToShow)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([layer, locales]) => {
+                        const isPrimary = layer === currentBatchData.primaryLayer && selectedBatch === '1';
+                        return `
+                            <div style="padding: 8px 12px; margin: 4px 0; background: white; border-radius: 4px; border-left: 4px solid ${isPrimary ? '#28a745' : '#17a2b8'};">
+                                <strong style="color: ${isPrimary ? '#28a745' : '#17a2b8'};">
+                                    ${layer}${isPrimary ? ' ⭐ (Primary)' : ''}:
+                                </strong>
+                                <span style="color: #555;">${locales.join(', ')}</span>
+                                <span style="color: #999; font-size: 10px; margin-left: 8px;">(${locales.length})</span>
+                            </div>
+                        `;
+                    })
+                    .join('');
+                mappingsList.innerHTML = mappings;
+            }
+
+            // Store the batch selections for processing
+            batchLayerLocaleSelections = batchToShow;
+        }
+
+        // Event listeners
+        verticalSelect.addEventListener('change', () => {
+            updateFunctionOptions();
+            localStorage.setItem('localeSelector_batch_vertical', verticalSelect.value);
+        });
+
+        functionSelect.addEventListener('change', () => {
+            updateBatchPreview();
+            localStorage.setItem('localeSelector_batch_function', functionSelect.value);
+        });
+
+        batch1Label.addEventListener('click', () => {
+            document.querySelector('input[name="batchNumber"][value="1"]').checked = true;
+            updateBatchRadioStyles();
+            updateBatchPreview();
+            localStorage.setItem('localeSelector_batch_number', '1');
+        });
+
+        batch2Label.addEventListener('click', () => {
+            document.querySelector('input[name="batchNumber"][value="2"]').checked = true;
+            updateBatchRadioStyles();
+            updateBatchPreview();
+            localStorage.setItem('localeSelector_batch_number', '2');
+        });
+
+        // Initialize
+        updateFunctionOptions();
+        updateBatchRadioStyles();
+
+        document.getElementById('applyBatchBtn').addEventListener('click', () => {
+            if (Object.keys(batchLayerLocaleSelections).length === 0) {
+                showNotification('No locales in selected batch!', 'warning');
+                return;
+            }
             closeDialog();
             setTimeout(() => processAllRows(), 100);
         });
