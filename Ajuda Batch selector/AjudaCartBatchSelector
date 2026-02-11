@@ -60,6 +60,12 @@
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
                     secondaryLayers: ['AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW']
                 },
+                SAP: {
+                    name: "Sales Abuse Prevention (SAP)",
+                    layers: COMMON_CONFIGS.layers.TSE_Common,
+                    primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
+                },
                 TT: {
                     name: "Transaction Trust (TT)",
                     layers: ['US', 'ES', 'MX', 'SE', 'PL', 'CN', 'DE', 'FR', 'IT', 'JP', 'AE', 'NL', 'TR'],
@@ -115,12 +121,6 @@
                 },
                 AtoZ: {
                     name: "A-to-z Guarantee Claims seller-facing (Claims-seller)",
-                    layers: COMMON_CONFIGS.layers.TSE_Common,
-                    primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
-                },
-                SAP: {
-                    name: "Sales Abuse Prevention (SAP)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
                     secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
