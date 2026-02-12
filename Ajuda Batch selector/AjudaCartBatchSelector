@@ -1,13 +1,11 @@
 // ==UserScript==
 // @name         Ajuda Cart Batch Selector
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.2
 // @description  Select cart items based on layer rules with vertical and function selection, memory, and usage tracking
 // @author       MajaBukvic
 // @match        https://ajuda.a2z.com/cms.html*
-// @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
-// @connect      amazon.sharepoint.com
 // @downloadURL  https://update.greasyfork.org/scripts/550365/Ajuda%20Cart%20Batch%20Selector.user.js
 // @updateURL    https://update.greasyfork.org/scripts/550365/Ajuda%20Cart%20Batch%20Selector.meta.js
 // ==/UserScript==
@@ -18,16 +16,20 @@
     // ========================================
     // CONFIGURATION
     // ========================================
-    
+
     const SCRIPT_NAME = 'Ajuda Cart Batch Selector';
-    const SCRIPT_VERSION = '1.0';
-    
+    const SCRIPT_VERSION = '1.2';
+
     // SharePoint tracking configuration
     const TRACKING_CONFIG = {
         enabled: true,
-        siteUrl: 'https://amazon.sharepoint.com/sites/amazonwatson',
-        listName: 'TampermonkeyUsageLog'
+        // URL to the tracking receiver page on SharePoint
+        receiverUrl: 'https://amazon.sharepoint.com/sites/amazonwatson/SiteAssets/tracking-receiver.html'
     };
+
+    let trackingIframe = null;
+    let trackingReady = false;
+    let pendingTracks = [];
 
     const COMMON_CONFIGS = {
         layers: {
@@ -59,12 +61,6 @@
                     layers: ['US', 'AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW'],
                     primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
                     secondaryLayers: ['AE', 'DE', 'ES', 'MX', 'BE', 'FR', 'IN', 'IT', 'JP', 'KR', 'NL', 'PL', 'BR', 'SE', 'TH', 'TR', 'VN', 'CN', 'TW']
-                },
-                SAP: {
-                    name: "Sales Abuse Prevention (SAP)",
-                    layers: COMMON_CONFIGS.layers.TSE_Common,
-                    primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
-                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
                 },
                 TT: {
                     name: "Transaction Trust (TT)",
@@ -101,7 +97,13 @@
                     layers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR', 'US', 'JP'],
                     primaryLayers: ['US', 'JP'],
                     secondaryLayers: ['BE', 'BR', 'DE', 'EG', 'FR', 'IT', 'IN', 'TR']
-                }
+                },
+                FP: {
+                    name: "Fraud Prevention (FP)",
+                    layers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US', 'UK'],
+                    primaryLayers: ['AE', 'BE', 'DE', 'MX', 'NL','PL', 'SE', 'UK'],
+                    secondaryLayers: ['AE', 'AU', 'BE', 'BR', 'CA', 'DE', 'EG', 'ES', 'FR', 'IE', 'IN', 'IT', 'JP', 'MX', 'NL', 'PL', 'SA', 'SE', 'SG', 'TR', 'US'],
+                },
             }
         },
         TSE: {
@@ -121,6 +123,12 @@
                 },
                 AtoZ: {
                     name: "A-to-z Guarantee Claims seller-facing (Claims-seller)",
+                    layers: COMMON_CONFIGS.layers.TSE_Common,
+                    primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
+                    secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
+                },
+                SAP: {
+                    name: "Sales Abuse Prevention (SAP)",
                     layers: COMMON_CONFIGS.layers.TSE_Common,
                     primaryLayers: COMMON_CONFIGS.primaryLayers.TSE_Common,
                     secondaryLayers: COMMON_CONFIGS.secondaryLayers.TSE_Common
@@ -149,12 +157,6 @@
                     primaryLayers: ['UK', 'US'],
                     secondaryLayers: ['US', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP']
                 },
-                FP: {
-                    name: "Fraud Prevention (FP)",
-                    layers: COMMON_CONFIGS.layers.US_AE_JP_IN_TR_AU_SE_SG_DE,
-                    primaryLayers: COMMON_CONFIGS.primaryLayers.US_Only,
-                    secondaryLayers: ['UK', 'DE', 'FR']
-                }
             }
         },
         Buyer: {
@@ -180,91 +182,107 @@
     let selectedFunction = null;
 
     // ========================================
-    // TRACKING FUNCTIONS
+    // TRACKING FUNCTIONS (via iframe)
     // ========================================
 
+    function initializeTracking() {
+        if (!TRACKING_CONFIG.enabled) return;
+
+        // Create hidden iframe
+        trackingIframe = document.createElement('iframe');
+        trackingIframe.style.cssText = 'display:none;width:0;height:0;border:0;';
+        trackingIframe.src = TRACKING_CONFIG.receiverUrl;
+        document.body.appendChild(trackingIframe);
+
+        // Listen for messages from iframe
+        window.addEventListener('message', handleTrackingMessage);
+
+        // Timeout if iframe doesn't load
+        setTimeout(() => {
+            if (!trackingReady) {
+                console.warn('[Batch Selector] Tracking iframe timeout - using local storage');
+                trackingReady = false;
+                processPendingTracks();
+            }
+        }, 5000);
+
+        console.log('[Batch Selector] Tracking iframe created');
+    }
+
+    function handleTrackingMessage(event) {
+        // Only accept messages from our SharePoint domain
+        if (!event.origin.includes('sharepoint.com')) return;
+
+        if (event.data.type === 'TRACKING_READY') {
+            trackingReady = true;
+            console.log('[Batch Selector] ✓ Tracking ready');
+            processPendingTracks();
+        } else if (event.data.type === 'TRACK_SUCCESS') {
+            console.log('[Batch Selector] ✓ Tracked to SharePoint');
+        } else if (event.data.type === 'TRACK_ERROR') {
+            console.warn('[Batch Selector] Tracking error:', event.data.error);
+        }
+    }
+
+    function processPendingTracks() {
+        while (pendingTracks.length > 0) {
+            const data = pendingTracks.shift();
+            sendTrackingData(data);
+        }
+    }
+
     function getCurrentUsername() {
-        const userElement = document.querySelector('.user-name, .username, [data-username]');
+        const userElement = document.querySelector('.user-name, .username, [data-username], .nav-user-name');
         if (userElement) {
             return userElement.textContent.trim() || userElement.dataset.username;
         }
-        const storedUser = localStorage.getItem('ajuda_username') || sessionStorage.getItem('username');
-        if (storedUser) {
-            return storedUser;
-        }
+        const storedUser = localStorage.getItem('ajuda_username');
+        if (storedUser) return storedUser;
         return 'Unknown User';
     }
 
-    function trackUsage(action, additionalData = {}) {
-        if (!TRACKING_CONFIG.enabled) {
-            console.log('[Batch Selector] Tracking disabled');
-            return;
-        }
+    function trackUsage(action) {
+        if (!TRACKING_CONFIG.enabled) return;
 
-        const trackingData = {
+        const data = {
+            id: Date.now().toString(),
             Title: `${SCRIPT_NAME} - ${action}`,
-            aflk: action,
-            k3hk: unsafeWindow.location.href,
-            pk8k: `${SCRIPT_NAME} v${SCRIPT_VERSION}`,
-            tg5f: getCurrentUsername(),
-            ...additionalData
+            Action: action,
+            PageURL: unsafeWindow.location.href,
+            ScriptName: `${SCRIPT_NAME} v${SCRIPT_VERSION}`,
+            Username: getCurrentUsername(),
+            Timestamp: new Date().toISOString()
         };
 
-        console.log('[Batch Selector] Tracking:', trackingData);
-        sendToSharePoint(trackingData);
+        console.log('[Batch Selector] Tracking:', action);
+
+        if (trackingReady && trackingIframe) {
+            sendTrackingData(data);
+        } else {
+            // Queue for later or store locally
+            pendingTracks.push(data);
+            storeLocally(data);
+        }
     }
 
-    function sendToSharePoint(data) {
-        const contextUrl = `${TRACKING_CONFIG.siteUrl}/_api/contextinfo`;
-        const listApiUrl = `${TRACKING_CONFIG.siteUrl}/_api/web/lists/getbytitle('${TRACKING_CONFIG.listName}')/items`;
+    function sendTrackingData(data) {
+        if (trackingIframe && trackingIframe.contentWindow) {
+            trackingIframe.contentWindow.postMessage({
+                type: 'TRACK_USAGE',
+                payload: data
+            }, '*');
+        }
+    }
 
-        GM_xmlhttpRequest({
-            method: 'POST',
-            url: contextUrl,
-            headers: {
-                'Accept': 'application/json;odata=verbose',
-                'Content-Type': 'application/json;odata=verbose'
-            },
-            onload: function(response) {
-                try {
-                    const contextInfo = JSON.parse(response.responseText);
-                    const formDigest = contextInfo.d.GetContextWebInformation.FormDigestValue;
-
-                    GM_xmlhttpRequest({
-                        method: 'POST',
-                        url: listApiUrl,
-                        headers: {
-                            'Accept': 'application/json;odata=verbose',
-                            'Content-Type': 'application/json;odata=verbose',
-                            'X-RequestDigest': formDigest
-                        },
-                        data: JSON.stringify({
-                            '__metadata': { 'type': 'SP.Data.TampermonkeyUsageLogListItem' },
-                            'Title': data.Title,
-                            'aflk': data.aflk,
-                            'k3hk': data.k3hk,
-                            'pk8k': data.pk8k,
-                            'tg5f': data.tg5f
-                        }),
-                        onload: function(createResponse) {
-                            if (createResponse.status >= 200 && createResponse.status < 300) {
-                                console.log('[Batch Selector] Usage tracked successfully');
-                            } else {
-                                console.warn('[Batch Selector] Failed to track usage:', createResponse.statusText);
-                            }
-                        },
-                        onerror: function(error) {
-                            console.warn('[Batch Selector] Error tracking usage:', error);
-                        }
-                    });
-                } catch (e) {
-                    console.warn('[Batch Selector] Error parsing context info:', e);
-                }
-            },
-            onerror: function(error) {
-                console.warn('[Batch Selector] Error getting form digest:', error);
-            }
-        });
+    function storeLocally(data) {
+        try {
+            const stored = JSON.parse(localStorage.getItem('batchSelectorTracking') || '[]');
+            stored.push(data);
+            if (stored.length > 100) stored.shift();
+            localStorage.setItem('batchSelectorTracking', JSON.stringify(stored));
+        } catch (e) {
+            // Ignore storage errors
+        }
     }
 
     // ========================================
@@ -315,9 +333,6 @@
         return match ? { id: match[1], layer: match[2], locale: match[3] } : null;
     }
 
-    /**
-     * FIXED: Use unsafeWindow for proper window reference
-     */
     function simulateClick(element) {
         if (!element) return;
         const event = new MouseEvent('click', {
@@ -335,9 +350,9 @@
         Array.from(rows).forEach(element => {
             const blurbNameElement = element.querySelector('td:nth-child(2) div:first-child');
             const subTextElement = element.querySelector('.sub-text');
-            
+
             if (!blurbNameElement || !subTextElement) return;
-            
+
             const blurbName = blurbNameElement.textContent;
             const objInfo = parseObjectId(subTextElement.textContent);
 
@@ -382,12 +397,10 @@
             }
         });
 
-        // First uncheck all checkboxes
         document.querySelectorAll('#version-list tbody tr input[type="checkbox"]').forEach(checkbox => {
             if (checkbox.checked) simulateClick(checkbox);
         });
 
-        // Then select the ones we want
         toSelect.forEach(element => {
             let checkbox = element.querySelector('input[type="checkbox"]');
             if (checkbox && !checkbox.checked) {
@@ -396,8 +409,6 @@
             }
         });
 
-        // Track the batch selection
-        const savedSelections = loadSelections();
         trackUsage(isPrimary ? 'primary_batch_selected' : 'secondary_batch_selected');
 
         return selectedCount;
@@ -406,7 +417,7 @@
     function updateFunctionSelect(verticalKey) {
         const functionSelect = document.getElementById('functionSelect');
         if (!functionSelect) return;
-        
+
         functionSelect.innerHTML = '';
         const savedSelections = loadSelections();
 
@@ -456,7 +467,7 @@
                 <h3 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">
                     📦 Batch Selector
                 </h3>
-                
+
                 <label for="verticalSelect" style="font-size: 13px; color: #555; display: block; margin-bottom: 5px;">
                     Select Vertical:
                 </label>
@@ -472,28 +483,31 @@
                 <select id="functionSelect" class="form-control" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
                 </select>
             </div>
-            
+
             <div style="text-align: center; border-top: 1px solid #eee; padding-top: 15px;">
-                <button id="selectPrimary" type="button" class="btn btn-primary" style="margin: 5px; padding: 8px 20px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                <button id="selectPrimary" type="button" style="margin: 5px; padding: 8px 20px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
                     ✓ Select Primary Batch
                 </button>
                 <br>
-                <button id="selectSecondary" type="button" class="btn btn-info" style="margin: 5px; padding: 8px 20px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                <button id="selectSecondary" type="button" style="margin: 5px; padding: 8px 20px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
                     ✓ Select Secondary Batch
                 </button>
                 <br>
-                <button id="closeDialog" type="button" class="btn" style="margin: 5px; padding: 8px 20px; background: #f5f5f5; color: #333; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;">
+                <button id="closeDialog" type="button" style="margin: 5px; padding: 8px 20px; background: #f5f5f5; color: #333; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 13px;">
                     Close
                 </button>
             </div>
-            
+
             <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee; font-size: 10px; color: #999; text-align: center;">
                 ${SCRIPT_NAME} v${SCRIPT_VERSION}
+                <span style="margin-left: 10px; color: ${trackingReady ? '#4caf50' : '#ff9800'};">
+                    ${trackingReady ? '● Tracking active' : '○ Tracking pending'}
+                </span>
             </div>
         `;
 
         dialog.innerHTML = html;
-        
+
         const overlay = document.createElement('div');
         overlay.id = 'batchSelectorOverlay';
         overlay.style.cssText = `
@@ -505,7 +519,7 @@
             background: rgba(0,0,0,0.5);
             z-index: 10000;
         `;
-        
+
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
 
@@ -587,16 +601,14 @@
             transform: translateX(100px);
         `;
         notification.textContent = message;
-        
+
         document.body.appendChild(notification);
-        
-        // Animate in
+
         setTimeout(() => {
             notification.style.opacity = '1';
             notification.style.transform = 'translateX(0)';
         }, 10);
-        
-        // Animate out and remove
+
         setTimeout(() => {
             notification.style.opacity = '0';
             notification.style.transform = 'translateX(100px)';
@@ -610,6 +622,10 @@
 
     function initialize() {
         if (unsafeWindow.location.href.includes('ajuda.a2z.com/cms.html')) {
+            // Initialize tracking iframe
+            initializeTracking();
+
+            // Track script load
             trackUsage('script_loaded');
 
             const observer = new MutationObserver((mutations, obs) => {
@@ -617,7 +633,7 @@
                 if (bulkOperations) {
                     createBatchButton();
                     obs.disconnect();
-                    console.log('[Batch Selector] Initialized successfully');
+                    console.log('[Batch Selector] ✓ Initialized');
                 }
             });
 
