@@ -1,0 +1,437 @@
+// ==UserScript==
+// @name         Ajuda Bulk GUID Creator
+// @namespace    https://ajuda.a2z.com
+// @version      2.0.0
+// @description  Bulk-create GUID objects in Ajuda from a TXT or CSV file, with GUID export
+// @match        https://ajuda.a2z.com/*
+// @match        https://ajuda.amazon.com/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+  "use strict";
+
+  var selectedItems = [];
+  var createdLog = [];
+  var isRunning = false;
+
+  function waitForTree() {
+    var check = function() {
+      if (document.querySelectorAll("li.tree-node > a").length > 0) {
+        createUI();
+        console.log("[Bulk GUID Creator] Ready");
+      } else {
+        setTimeout(check, 1000);
+      }
+    };
+    check();
+  }
+
+  function createUI() {
+    var toggleBtn = document.createElement("button");
+    toggleBtn.textContent = "Bulk Create";
+    toggleBtn.style.cssText = "position:fixed;bottom:20px;right:20px;z-index:99999;background:#232f3e;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:Arial,sans-serif;";
+    document.body.appendChild(toggleBtn);
+
+    var panel = document.createElement("div");
+    panel.style.cssText = "display:none;position:fixed;bottom:70px;right:20px;z-index:99999;background:#fff;border:1px solid #ccc;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:400px;font-family:Arial,sans-serif;max-height:85vh;overflow-y:auto;";
+
+    var header = document.createElement("div");
+    header.style.cssText = "background:#232f3e;color:#fff;padding:12px 16px;border-radius:10px 10px 0 0;display:flex;justify-content:space-between;align-items:center;";
+    header.innerHTML = "<strong>Bulk GUID Creator</strong>";
+    var closeBtn = document.createElement("span");
+    closeBtn.textContent = "X";
+    closeBtn.style.cssText = "cursor:pointer;font-size:16px;font-weight:bold;";
+    closeBtn.addEventListener("click", function() { panel.style.display = "none"; });
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    var body = document.createElement("div");
+    body.style.cssText = "padding:16px;";
+
+    // Step 1: Folder select
+    var step1 = document.createElement("div");
+    step1.style.cssText = "margin-bottom:14px;";
+    step1.innerHTML = "<label style='font-weight:bold;font-size:13px;display:block;margin-bottom:6px;'>1. Select target folder</label>";
+    var folderSelect = document.createElement("select");
+    folderSelect.id = "bulk-folder-select";
+    folderSelect.style.cssText = "width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:13px;";
+    step1.appendChild(folderSelect);
+    var refreshBtn = document.createElement("button");
+    refreshBtn.textContent = "Refresh folders";
+    refreshBtn.style.cssText = "margin-top:6px;padding:4px 10px;font-size:12px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;";
+    refreshBtn.addEventListener("click", loadFolders);
+    step1.appendChild(refreshBtn);
+    body.appendChild(step1);
+
+    // Step 2: File upload
+    var step2 = document.createElement("div");
+    step2.style.cssText = "margin-bottom:14px;";
+    step2.innerHTML = "<label style='font-weight:bold;font-size:13px;display:block;margin-bottom:6px;'>2. Upload file (.txt or .csv)</label><div style='font-size:11px;color:#666;margin-bottom:6px;'>TXT: one title per line<br>CSV: Name,Description (header row skipped)</div>";
+    var fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".txt,.csv";
+    fileInput.style.cssText = "width:100%;font-size:13px;";
+    fileInput.addEventListener("change", handleFile);
+    step2.appendChild(fileInput);
+    var preview = document.createElement("div");
+    preview.id = "bulk-preview";
+    preview.style.cssText = "margin-top:8px;font-size:12px;color:#666;max-height:150px;overflow-y:auto;border:1px solid #eee;border-radius:4px;padding:8px;display:none;";
+    step2.appendChild(preview);
+    body.appendChild(step2);
+
+    // Step 3: Delay
+    var step3 = document.createElement("div");
+    step3.style.cssText = "margin-bottom:14px;";
+    step3.innerHTML = "<label style='font-weight:bold;font-size:13px;display:block;margin-bottom:6px;'>3. Delay between creations (ms)</label>";
+    var delayInput = document.createElement("input");
+    delayInput.type = "number";
+    delayInput.id = "bulk-delay";
+    delayInput.value = "2000";
+    delayInput.min = "500";
+    delayInput.max = "10000";
+    delayInput.style.cssText = "width:100px;padding:6px;border:1px solid #ccc;border-radius:4px;";
+    step3.appendChild(delayInput);
+    body.appendChild(step3);
+
+    // Start button
+    var startBtn = document.createElement("button");
+    startBtn.id = "bulk-start-btn";
+    startBtn.textContent = "Start Creating";
+    startBtn.disabled = true;
+    startBtn.style.cssText = "width:100%;padding:10px;font-size:14px;font-weight:bold;background:#5cb85c;color:#fff;border:none;border-radius:6px;cursor:not-allowed;opacity:0.5;";
+    startBtn.addEventListener("click", startBulkCreate);
+    body.appendChild(startBtn);
+
+    // Export button (hidden until results exist)
+    var exportBtn = document.createElement("button");
+    exportBtn.id = "bulk-export-btn";
+    exportBtn.textContent = "Export CSV (Title, GUID)";
+    exportBtn.style.cssText = "display:none;width:100%;padding:10px;font-size:14px;font-weight:bold;background:#337ab7;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-top:8px;";
+    exportBtn.addEventListener("click", exportLog);
+    body.appendChild(exportBtn);
+
+    // Progress
+    var progressDiv = document.createElement("div");
+    progressDiv.id = "bulk-progress";
+    progressDiv.style.cssText = "margin-top:14px;display:none;";
+    progressDiv.innerHTML = "<div style='background:#eee;border-radius:4px;height:24px;overflow:hidden;'><div id='bulk-bar' style='background:#5cb85c;height:100%;width:0%;transition:width 0.3s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:bold;'></div></div><div id='bulk-status' style='margin-top:8px;font-size:12px;color:#333;'></div>";
+    body.appendChild(progressDiv);
+
+    // Log
+    var logDiv = document.createElement("div");
+    logDiv.id = "bulk-log";
+    logDiv.style.cssText = "margin-top:14px;font-size:12px;max-height:200px;overflow-y:auto;display:none;border:1px solid #eee;border-radius:4px;padding:8px;background:#fafafa;";
+    body.appendChild(logDiv);
+
+    panel.appendChild(body);
+    document.body.appendChild(panel);
+
+    toggleBtn.addEventListener("click", function() {
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+
+    loadFolders();
+  }
+
+  function loadFolders() {
+    var select = document.getElementById("bulk-folder-select");
+    if (!select) return;
+    select.innerHTML = "<option value=''>-- Select a folder --</option>";
+    var anchors = document.querySelectorAll("li.tree-node > a");
+    for (var i = 0; i < anchors.length; i++) {
+      var name = anchors[i].textContent.trim();
+      if (name) {
+        var opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      }
+    }
+    select.addEventListener("change", updateBtn);
+  }
+
+  function handleFile(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      var content = ev.target.result;
+      var ext = file.name.split(".").pop().toLowerCase();
+      selectedItems = [];
+      if (ext === "csv") {
+        var lines = content.split(/\r?\n/);
+        for (var i = 1; i < lines.length; i++) {
+          var line = lines[i].trim();
+          if (!line) continue;
+          var parts = parseCSVLine(line);
+          var title = (parts[0] || "").trim();
+          var desc = (parts[1] || "").trim();
+          if (title) selectedItems.push({ title: title, description: desc });
+        }
+      } else {
+        var txtLines = content.split(/\r?\n/);
+        for (var j = 0; j < txtLines.length; j++) {
+          var t = txtLines[j].trim();
+          if (t) selectedItems.push({ title: t, description: "" });
+        }
+      }
+      var previewEl = document.getElementById("bulk-preview");
+      if (selectedItems.length > 0) {
+        previewEl.style.display = "block";
+        var html = "<strong>" + selectedItems.length + " items found:</strong><br>";
+        for (var k = 0; k < selectedItems.length; k++) {
+          html += (k + 1) + ". " + selectedItems[k].title;
+          if (selectedItems[k].description) html += " <span style='color:#999;'>(" + selectedItems[k].description + ")</span>";
+          html += "<br>";
+        }
+        previewEl.innerHTML = html;
+      } else {
+        previewEl.style.display = "block";
+        previewEl.innerHTML = "<span style='color:red;'>No valid items found in file.</span>";
+      }
+      updateBtn();
+    };
+    reader.readAsText(file);
+  }
+
+  function parseCSVLine(line) {
+    var result = [];
+    var current = "";
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (i + 1 < line.length && line[i + 1] === '"') { current += '"'; i++; }
+          else { inQuotes = false; }
+        } else { current += ch; }
+      } else {
+        if (ch === '"') { inQuotes = true; }
+        else if (ch === ",") { result.push(current); current = ""; }
+        else { current += ch; }
+      }
+    }
+    result.push(current);
+    return result;
+  }
+
+  function updateBtn() {
+    var btn = document.getElementById("bulk-start-btn");
+    if (!btn) return;
+    var folder = document.getElementById("bulk-folder-select").value;
+    var ready = folder && selectedItems.length > 0 && !isRunning;
+    btn.disabled = !ready;
+    btn.style.opacity = ready ? "1" : "0.5";
+    btn.style.cursor = ready ? "pointer" : "not-allowed";
+  }
+
+  function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  function findNode(name) {
+    var all = document.querySelectorAll("li.tree-node > a");
+    for (var j = 0; j < all.length; j++) {
+      if (all[j].textContent.trim() === name) return all[j];
+    }
+    return null;
+  }
+
+  function rightClick(el) {
+    var rect = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true, cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      button: 2
+    }));
+  }
+
+  function waitForEl(selector, timeout) {
+    timeout = timeout || 5000;
+    return new Promise(function(resolve, reject) {
+      var existing = document.querySelector(selector);
+      if (existing) { resolve(existing); return; }
+      var obs = new MutationObserver(function() {
+        var el = document.querySelector(selector);
+        if (el) { obs.disconnect(); clearTimeout(timer); resolve(el); }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      var timer = setTimeout(function() { obs.disconnect(); reject(new Error("Timeout: " + selector)); }, timeout);
+    });
+  }
+
+  function captureGUID() {
+    // Method 1: from the copy-text-link span that shows after creation
+    var guidSpan = document.querySelector(".copy-text-link .text");
+    if (guidSpan) {
+      var guid = guidSpan.textContent.trim();
+      if (guid && guid.length > 5) return guid;
+    }
+    // Method 2: from the URL parameter
+    var urlParams = new URLSearchParams(window.location.search);
+    var objParam = urlParams.get("object");
+    if (objParam) return objParam;
+    return "";
+  }
+
+  function logMsg(msg, type) {
+    var log = document.getElementById("bulk-log");
+    if (!log) return;
+    log.style.display = "block";
+    var color = type === "success" ? "#2e7d32" : type === "error" ? "#c62828" : "#333";
+    log.innerHTML += "<div style='color:" + color + ";margin-bottom:4px;'>" + msg + "</div>";
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function exportLog() {
+    if (createdLog.length === 0) {
+      alert("No results to export.");
+      return;
+    }
+    var csv = "Title,GUID\n";
+    for (var i = 0; i < createdLog.length; i++) {
+      var row = createdLog[i];
+      // Escape titles that contain commas
+      var title = row.title;
+      if (title.indexOf(",") >= 0 || title.indexOf('"') >= 0) {
+        title = '"' + title.replace(/"/g, '""') + '"';
+      }
+      csv += title + "," + row.guid + "\n";
+    }
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = "ajuda-created-guids.csv";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function startBulkCreate() {
+    if (isRunning) return;
+    isRunning = true;
+    createdLog = [];
+    updateBtn();
+
+    var folderName = document.getElementById("bulk-folder-select").value;
+    var delay = parseInt(document.getElementById("bulk-delay").value) || 2000;
+    var items = selectedItems.slice();
+
+    var btn = document.getElementById("bulk-start-btn");
+    btn.textContent = "Running...";
+
+    var exportBtn = document.getElementById("bulk-export-btn");
+    exportBtn.style.display = "none";
+
+    var progressDiv = document.getElementById("bulk-progress");
+    var bar = document.getElementById("bulk-bar");
+    var status = document.getElementById("bulk-status");
+    progressDiv.style.display = "block";
+
+    var log = document.getElementById("bulk-log");
+    log.innerHTML = "";
+    log.style.display = "block";
+
+    var successes = 0;
+    var failures = 0;
+
+    for (var idx = 0; idx < items.length; idx++) {
+      var item = items[idx];
+      var pct = Math.round(((idx + 1) / items.length) * 100);
+      bar.style.width = pct + "%";
+      bar.textContent = pct + "%";
+      status.textContent = "[" + (idx + 1) + "/" + items.length + "] Creating: " + item.title;
+
+      try {
+        var node = findNode(folderName);
+        if (!node) throw new Error("Folder not found: " + folderName);
+
+        rightClick(node);
+        var menu = await waitForEl(".tree-context-menu", 5000);
+
+        var createOpt = null;
+        var menuItems = menu.querySelectorAll("div, span, a, li, button, p");
+        for (var k = 0; k < menuItems.length; k++) {
+          if (menuItems[k].textContent.trim().toLowerCase() === "create object here") {
+            createOpt = menuItems[k];
+            break;
+          }
+        }
+        if (!createOpt) throw new Error("'Create object here' not found.");
+
+        createOpt.click();
+        await sleep(1200);
+
+        // Fill name
+        var nameInput = document.querySelector(".card .form-line input.form-control");
+        if (!nameInput) nameInput = document.querySelector('.card input[type="text"]');
+        if (!nameInput) throw new Error("Name input not found.");
+
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        setter.call(nameInput, item.title);
+        nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+        nameInput.dispatchEvent(new Event("change", { bubbles: true }));
+        await sleep(400);
+
+        // Fill description if provided
+        if (item.description) {
+          var descInput = document.querySelector(".card .form-line textarea.form-control");
+          if (descInput) {
+            var descSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+            descSetter.call(descInput, item.description);
+            descInput.dispatchEvent(new Event("input", { bubbles: true }));
+            descInput.dispatchEvent(new Event("change", { bubbles: true }));
+            await sleep(300);
+          }
+        }
+
+        // Click save
+        var saveBtn = document.querySelector(".card .submit button.btn-success");
+        if (!saveBtn) saveBtn = document.querySelector(".card button.btn-success");
+        if (!saveBtn) throw new Error("Save button not found.");
+
+        if (saveBtn.disabled) {
+          await sleep(1200);
+          if (saveBtn.disabled) throw new Error("Save button still disabled.");
+        }
+
+        saveBtn.click();
+        await sleep(2500);
+
+        // Capture the GUID
+        var guid = captureGUID();
+
+        createdLog.push({ title: item.title, guid: guid });
+        successes++;
+        logMsg("[" + (idx + 1) + "/" + items.length + "] " + item.title + " -> " + (guid || "GUID not captured"), "success");
+
+      } catch (err) {
+        failures++;
+        createdLog.push({ title: item.title, guid: "FAILED: " + err.message });
+        logMsg("[" + (idx + 1) + "/" + items.length + "] Failed: " + item.title + " - " + err.message, "error");
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(500);
+        document.body.click();
+        await sleep(500);
+      }
+
+      if (idx < items.length - 1) await sleep(delay);
+    }
+
+    status.innerHTML = "<strong>Done!</strong> " + successes + " created, " + failures + " failed";
+    bar.style.width = "100%";
+    bar.style.background = failures > 0 ? "#ff9800" : "#5cb85c";
+
+    // Show export button
+    exportBtn.style.display = "block";
+
+    btn.textContent = "Start Creating";
+    isRunning = false;
+    updateBtn();
+  }
+
+  waitForTree();
+})();
